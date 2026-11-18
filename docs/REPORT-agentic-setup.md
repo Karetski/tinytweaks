@@ -1,8 +1,7 @@
 # Agentic development setup — report (2026-11-17)
 
-Nothing is committed and the addon's own Lua files are unchanged. `make check` passes
-with 83 tests passing, 1 skipped and 0 failing. luacheck has not run locally (see Open
-items).
+The addon's own Lua files are unchanged. `make check` passes, including luacheck: 83
+tests pass, 1 is skipped and none fail.
 
 ## 1. Skills and agent infrastructure
 
@@ -97,16 +96,9 @@ Phrases often attributed to Lattner that I couldn't source as his ("pay for what
 
 ## Open items
 
-- **Run luacheck.** It couldn't be installed in the sandbox. Install it with `brew install luacheck`, run `make lint`, and fix any warnings before CI turns red.
 - **Export Blizzard's UI source** so `blizzard-source` has the authoritative copy:
   1. Add the `-console` launch argument.
   2. On the login screen, press the backtick key.
   3. Run `ExportInterfaceFiles code`.
 - **Lua 5.1 compatibility** is unverified until CI runs. Locally the tests have only run on LuaJIT.
 - **The CI matrix value `luajit-2.1`** for `leafo/gh-actions-lua` hasn't been checked against that action's accepted versions. If the job fails at setup, that value is the first thing to change.
-- **Restart Claude Code** so it picks up the hook and the skills.
-- **Suggested commit split:**
-  1. tooling and harness
-  2. docs
-  3. `.claude` (skills, settings, vendored agentkit)
-  4. packaging
