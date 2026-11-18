@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: TinyTweaks
+## Notes: Small tweaks for the native UI.
+## Version: 0.1.0
+## SavedVariables: TinyTweaksDB
+
+Core.lua
+EditModeFineTune.lua
+RaidGroupGrid.lua
