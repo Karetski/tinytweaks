@@ -104,7 +104,8 @@ end
 local function runBench(name, setup)
 	local op = setup()
 	op() -- warm-up (lazy creation, JIT)
-	local n, elapsed = 1, 0
+	local n = 1
+	local elapsed
 	while true do
 		local start = os.clock()
 		for _ = 1, n do
