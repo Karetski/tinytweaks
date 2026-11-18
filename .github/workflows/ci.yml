@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leafo/gh-actions-lua@v13.1.0
+        with:
+          luaVersion: "5.1"
+      - uses: leafo/gh-actions-luarocks@v6.1.1
+      - run: luarocks install luacheck
+      - run: luacheck .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        lua: ["5.1", "luajit-2.1"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leafo/gh-actions-lua@v13.1.0
+        with:
+          luaVersion: ${{ matrix.lua }}
+      - run: $(command -v luajit || command -v lua) tests/run.lua unit integration invariants
+
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: python3 tools/check.py
+
+  # Non-blocking: shared runners are noisy, so numbers are a heads-up in the log, not a gate.
+  # Allocation budgets that must hold are pinned in tests/invariants.
+  bench-smoke:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leafo/gh-actions-lua@v13.1.0
+        with:
+          luaVersion: "luajit-2.1"
+      - run: $(command -v luajit || command -v lua) tests/run.lua bench
