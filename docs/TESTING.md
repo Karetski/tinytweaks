@@ -54,6 +54,10 @@ lists.
 - One spec file per feature. Every behavior change carries a scenario that fails without
   it. Every storage change carries a migration test that starts from the old saved data.
 - Known gaps are `skip(name, reason)`, never deleted tests.
+- A fix's regression test must fail without the fix. To prove it, load the pre-fix revision of
+  the file in place of the working copy:
+  `world:loadAddon({ replace = { ["EditModeFineTune.lua"] = "<path to the old copy>" } })`
+  (for example from `git show HEAD:EditModeFineTune.lua`), run the test, and confirm that it fails.
 - Invariant ceilings are measured, with their headroom explained in the test. A failing
   invariant means the change is wrong; raise a ceiling only with a measurement.
 - Bench numbers include the emulator's overhead and run on LuaJIT, so trust trends and

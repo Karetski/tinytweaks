@@ -76,9 +76,11 @@ test("given_a_grid_when_blizzard_re_flows_then_each_group_is_placed_once_more_by
 	local moves = groupMoves(world)
 	-- When
 	world:raidLayout()
-	-- Then: Blizzard's 8 plus the grid's 8, and no scheduled follow-up work
+	-- Then: Blizzard's 8 plus the grid's 8, and nothing re-placed next frame
 	A.eq(groupMoves(world) - moves, 16)
-	A.eq(world:nextFrame(), 0)
+	local placed = groupMoves(world)
+	A.eq(world:nextFrame(), 1, "only Blizzard's container size refresh")
+	A.eq(groupMoves(world), placed)
 end)
 
 test("given_frames_and_layouts_when_only_viewed_then_nothing_is_written_to_saved_variables", function()

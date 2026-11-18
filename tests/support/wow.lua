@@ -10,9 +10,10 @@
 	  world:selectSystem(target)       -- what clicking the frame in Edit Mode does
 	  world:typeInto(world:fineTuneBox("FrameSize"), "87.5")
 
-	The emulator is a MODEL, not ground truth. Everything below marked (verify) is an assumption
-	about Blizzard behavior inferred from how TinyTweaks uses it; check it against the exported
-	Blizzard source (/console exportInterfaceFiles code) before relying on a test that depends on it.
+	The emulator is a MODEL, not ground truth. The Blizzard behavior below was checked against
+	Blizzard's UI source for the Forever client, build 1.60.1 (70959), from the forever branch of
+	Gethe/wow-ui-source; paths are under Interface/AddOns/. When the client changes, re-check the cited
+	functions first (the blizzard-source skill does this).
 
 	Taint contract enforcement
 	--------------------------
@@ -21,11 +22,16 @@
 
 	  * Blizzard-owned frames and tables are guarded proxies. Writing a field on one from addon code
 	    raises "taint: addon wrote <field> on <name>".
-	  * Blizzard methods that change Edit Mode or raid layout state (UpdateSystemSetting*,
-	    ApplySystemAnchor, SnapToFrame, OnSystemPositionChange, OnSettingValueChanged, UpdateSystems,
-	    UpdateRaidContainerFlow, LayoutFrames, AttachToSystemFrame, UpdateSettings, UpdateDialog,
-	    RegisterSystemFrame, updateLayoutFunc, CompactRaidGroup_GenerateForGroup) and SetScript on a
-	    Blizzard frame raise "taint: addon called <method>" when called from addon code.
+	  * Blizzard methods that change Edit Mode or raid layout state raise "taint: addon called
+	    <method> on <name>" when called from addon code: on system frames the SetScale, SetPoint and
+	    ClearAllPoints overrides, UpdateSystem, UpdateSystemSetting*, UpdateSystemSettingValue,
+	    ApplySystemAnchor, SnapToFrame, BreakFrameSnap, OnSystemPositionChange and the snap
+	    bookkeeping; on the manager and dialog UpdateSystems, InitSystemAnchors,
+	    OnSystemSettingChange, OnSystemPositionChange, UpdateRaidContainerFlow, AttachToSystemFrame,
+	    UpdateSettings, UpdateDialog, OnSettingValueChanged and RegisterSystemFrame; on the raid
+	    container and groups LayoutFrames and updateLayoutFunc; and the globals
+	    CompactRaidGroup_GenerateForGroup and ManageFramePositions. SetScript on a Blizzard frame is a
+	    violation too.
 	  * Creating a frame parented to EditModeSystemSettingsDialog (a layout frame that iterates its
 	    children) raises "taint: addon parented a frame to ...".
 	  * Moving, scaling, resizing, showing or hiding a protected frame from addon code in combat
@@ -38,31 +44,67 @@
 	the test if any error or violation was recorded and not taken with world:takeErrors() /
 	world:takeViolations().
 
-	Blizzard behavior assumed (verify)
-	----------------------------------
-	  1. ApplySystemAnchor clears the points and sets the single anchorInfo point with its offsets
-	     divided by the frame's scale (anchorInfo offsets are in 1.0-scale units).
-	  2. Moving a slider calls dialog:OnSettingValueChanged(setting, value); Blizzard stores the new
-	     raw step and calls the frame's UpdateSystemSetting<Name> only when the raw step changed.
-	  3. Raw slider value = (value - min) / step; GetSettingValue(setting) returns the display value,
-	     GetSettingValue(setting, true) the raw step; both return 0 before IsInitialized().
-	  4. UpdateSystemSetting<Name> for size/opacity sliders is a single SetScale/SetAlpha(value / 100).
-	  5. A layout switch or revert re-applies only settings whose raw step changed, then calls
-	     EditModeManagerFrame:UpdateSystems(), which re-applies every frame's anchor.
-	  6. AttachToSystemFrame sets attachedToSystem, calls UpdateDialog (which calls UpdateSettings) and
-	     then shows the dialog. UpdateSettings re-acquires pooled slider frames; each has .setting and
-	     .Slider.RightText. GetSettingPool(Slider):EnumerateActive() iterates pairs-style.
-	  7. Dragging a frame calls SnapToFrame(info) once per magnetism snap, then OnSystemPositionChange,
-	     after which systemInfo.anchorInfo holds the new pin and the frame sits at it.
-	  8. MinimalSliderWithSteppers:Init(value, ...) fires OnValueChanged when the value changes.
-	  9. Raid container, discrete mode: flowFrames holds every generated CompactRaidGroupN (type
-	     "object", isFlowGroup = true) in group order; empty groups stay in the list but are hidden.
-	     Group height = 14 + 36 * members, width 72. LayoutFrames flows them like FlowContainer_DoLayout
-	     (every flow group starts a new line), then sizes the container to the content.
-	 10. A roster change regenerates missing groups (CompactRaidGroup_GenerateForGroup), calls each
-	     group's updateLayoutFunc, then LayoutFrames. Container SetSize does not re-flow synchronously.
-	 11. SetAlpha on a protected frame in combat is allowed; SetPoint/ClearAllPoints/SetScale/SetSize/
-	     Show/Hide are blocked.
+	Blizzard behavior modelled (build 1.60.1)
+	----------------------------------------
+	ET = Blizzard_EditMode/Shared/EditModeSystemTemplates.lua, EM = .../EditModeManager.lua,
+	ED = .../EditModeDialogs.lua, C = Blizzard_CompactRaidFrames/Blizzard_CompactRaidFrameContainer.lua,
+	G = Blizzard_UnitFrame/Shared/CompactRaidGroup.lua.
+
+	  1. System frames replace SetScale, SetPoint and ClearAllPoints with Blizzard Lua (ET:9-17); the
+	     widget methods stay reachable as SetScaleBase, SetPointBase and ClearAllPointsBase. The
+	     SetScale override keeps the frame in place by scaling every point's offsets by old/new through
+	     the SetPoint override, and re-runs ManageFramePositions for a managed frame in its default
+	     position (ET:117). The SetPoint override records the snap and sets
+	     EditModeManagerFrame.editModeSystemAnchorDirty (ET:147, EM:1039). Addon code calling the
+	     overrides is a taint violation; the *Base methods are plain widget calls.
+	  2. ApplySystemAnchor (ET:350): a managed frame in its default position is placed by its container
+	     (modelled as its default point); otherwise ClearAllPoints, then anchorInfo (and anchorInfo2)
+	     with offsets divided by the frame's scale, through the overrides. The cast bar re-applies its
+	     size afterwards (ET:1853).
+	  3. UpdateSystem (ET:385): settings diff marks changed ones dirty, then ApplySystemAnchor, then the
+	     dialog update, then UpdateSystemSetting<Name> for each dirty setting. A layout load, layout
+	     switch or Revert All runs InitSystemAnchors, then UpdateSystems (EM:1010, EM:1479-1483); the
+	     dialog's per-frame Revert calls frame:UpdateSystem directly (EM:407).
+	  4. Sliders: raw = (value - min) / step, unrounded; display = Clamp(raw * step + min, min, max).
+	     GetSettingValue returns 0 before IsInitialized() or for a setting the frame lacks (ET:483).
+	     Moving a slider: dialog:OnSettingValueChanged → manager:OnSystemSettingChange →
+	     frame:UpdateSystemSettingValue, which acts only when the raw step changes: it stores it, marks it
+	     dirty, refreshes the dialog (UpdateSettings), then runs UpdateSystemSetting<Name>
+	     (ED:659, EM:400, ET:268, ET:409).
+	  5. The size, scale and opacity handlers TinyTweaks supports are one SetScale or SetAlpha of
+	     value / 100 each (ET:2578, 2681, 2751, 2784, 2788, 2852, 2898, 3822, 3850, 1629, 1586, 2141, 3001,
+	     3518). The party frame skips its size while the ForcedPartyFrameScale game rule is active
+	     (Blizzard_UnitFrame/Shared/PartyFrame.lua:28).
+	  6. AttachToSystemFrame sets attachedToSystem, runs UpdateDialog (UpdateSettings first) and shows
+	     the dialog (ED:537). UpdateSettings does nothing for another frame; it releases the slider
+	     frames except one whose thumb is being dragged, re-acquires the rest, sets .setting and the
+	     value text, and re-shows the label (ED:598, MinimalSlider.lua:160-172). The slider pool is a
+	     secure pool: EnumerateActive yields (frame, true) in next order.
+	  7. Dragging: magnetism calls SnapToFrame once per snap (EditModeUtil.lua:444-465), then
+	     OnSystemPositionChange stores GetPoint(1) at 1.0 scale into anchorInfo IN PLACE, with
+	     relativeTo as a frame NAME, updates anchorInfo2 only if it exists, and clears
+	     isInDefaultPosition only when the anchor changed; the frame isn't moved (EM:316, EM:372).
+	     Arrow keys re-pin to UIParent's top left without snapping (ET:737 BreakFrameSnap).
+	  8. MinimalSliderWithSteppers:Init sets the value before installing its OnValueChanged script, so
+	     the first Init fires nothing and a later Init fires through the previous script when the value
+	     changes (MinimalSlider.lua:126).
+	  9. Raid container, discrete mode: LayoutFrames hides what it flowed, re-adds only used groups
+	     (generating them on first use), flows at 3000x3000, sizes to its shown children, and resizes
+	     from the visible bounds one frame later (C:233-345, C:162-192). flowMaxPerLine is 5 in the
+	     separate-groups modes (EM:483-488). A group's size: member width (+8 with border) by 14 + member
+	     height x max(members, 1) (+2 with border) (G:95). UpdateRaidContainerFlow re-flows twice at the
+	     current size, then LayoutFrames if ready (EM:477).
+	 10. On a roster change existing groups re-lay out on their own GROUP_ROSTER_UPDATE (G:8-15) and the
+	     container re-lays out on its own; the order isn't fixed (C:266-267), so setRaidRoster can run the
+	     groups after the container. The container's OnSizeChanged only updates its border; resizing it
+	     doesn't re-flow.
+
+	Still unverified (client C code, not in the Lua source):
+	  * Which widget calls combat lockdown refuses on protected frames. Modelled from warcraft.wiki.gg
+	    (Widget_API #secureframe): SetPoint, ClearAllPoints, SetAllPoints, SetScale, SetSize, SetWidth,
+	    SetHeight, Show, Hide, SetShown; SetAlpha is allowed.
+	  * Taint itself: the guards above encode the rules, not the client's taint tracking.
+	  * Enum values (the addon only looks names up; the names follow the source).
 ]]
 
 local wow = {}
@@ -93,7 +135,7 @@ local function readFile(path)
 end
 
 -- Enums ------------------------------------------------------------------------------------
--- Values are arbitrary but distinct; TinyTweaks only looks them up by name. (verify names)
+-- Values are arbitrary but distinct; TinyTweaks only looks them up by name.
 
 local function newEnum()
 	return {
@@ -122,6 +164,7 @@ local function newEnum()
 		EditModeAuraFrameSetting = { Orientation = 0, IconSize = 3, Opacity = 6 },
 		EditModeCooldownViewerSetting = { IconSize = 2, Opacity = 4 },
 		EditModePersonalResourceDisplaySetting = { Opacity = 5 },
+		GameRule = { ForcedPartyFrameScale = 40 },
 	}
 end
 
@@ -155,9 +198,11 @@ local COSMETIC = {
 	"SetCursorPosition", "SetMaxLetters",
 }
 
+-- Widget calls refused on a protected frame in combat (#secureframe on warcraft.wiki.gg Widget_API);
+-- SetAlpha isn't restricted.
 local PROTECTED_OPS = {
 	SetPoint = true, ClearAllPoints = true, SetAllPoints = true, SetScale = true, SetSize = true,
-	SetWidth = true, SetHeight = true, Show = true, Hide = true,
+	SetWidth = true, SetHeight = true, Show = true, Hide = true, SetShown = true,
 }
 
 -- World ---------------------------------------------------------------------------------------
@@ -337,7 +382,8 @@ function World:defineMethod(obj, name, impl, guarded)
 	local world = self
 	rawset(self.backing[obj], name, function(this, ...)
 		if guarded and world.depth == 0 then
-			world:violation("taint: addon called " .. name)
+			local s = world.ws[this] or world.ws[obj]
+			world:violation("taint: addon called " .. name .. " on " .. (s and s.name or "a Blizzard object"))
 		end
 		return world:blizzard(impl, this, ...)
 	end)
@@ -418,6 +464,42 @@ function World:buildMethods()
 	function region.GetNumPoints(o)
 		return #st(o).points
 	end
+	-- Rect in the frame's own units (bottom-left origin), for frames whose first point is on UIParent.
+	local FX = { LEFT = 0, CENTER = 0.5, RIGHT = 1, TOP = 0.5, BOTTOM = 0.5 }
+	local FY = { TOP = 1, CENTER = 0.5, BOTTOM = 0, LEFT = 0.5, RIGHT = 0.5 }
+	local function fraction(point)
+		local v = point:match("^(TOP)") or point:match("^(BOTTOM)")
+		local h = point:match("(LEFT)$") or point:match("(RIGHT)$")
+		return h and FX[h] or 0.5, v and FY[v] or 0.5
+	end
+	local function rect(o)
+		local s = st(o)
+		local p = assert(s.points[1], "emulator: frame has no point")
+		local ui = world.UIParent
+		assert(p[2] == ui, "emulator: geometry only for frames anchored to UIParent")
+		local scale = s.scale
+		local rfx, rfy = fraction(p[3])
+		local pfx, pfy = fraction(p[1])
+		local us = st(ui)
+		local ax, ay = rfx * us.width + p[4] * scale, rfy * us.height + p[5] * scale
+		local left = ax - pfx * s.width * scale
+		local bottom = ay - pfy * s.height * scale
+		return left / scale, bottom / scale, s.width, s.height
+	end
+	function region.GetLeft(o)
+		return (rect(o))
+	end
+	function region.GetBottom(o)
+		return select(2, rect(o))
+	end
+	function region.GetTop(o)
+		local _, bottom, _, height = rect(o)
+		return bottom + height
+	end
+	function region.GetRight(o)
+		local left, _, width = rect(o)
+		return left + width
+	end
 	function region.SetSize(o, w, h)
 		guardProtected(o, "SetSize")
 		local s = st(o)
@@ -458,6 +540,7 @@ function World:buildMethods()
 		end
 	end
 	function region.SetShown(o, shown)
+		guardProtected(o, "SetShown")
 		if shown then
 			o:Show()
 		else
@@ -763,12 +846,16 @@ function World:applyTemplate(obj, template)
 			assert(event == "OnValueChanged", "unknown slider event " .. tostring(event))
 			table.insert(s.slider.callbacks, { fn = fn, owner = owner })
 		end
+		-- MinimalSlider.lua:126: Init sets the value before it installs its OnValueChanged script, so
+		-- the first Init fires nothing; a later Init fires through the script the previous one left.
 		function obj.Init(_, value, minValue, maxValue, steps)
 			local sl = s.slider
 			local changed = sl.value ~= value
+			local scripted = sl.scripted
 			sl.value, sl.min, sl.max, sl.steps = value, minValue, maxValue, steps
-			if changed then
-				fire(value) -- (verify) Init fires OnValueChanged on a value change
+			sl.scripted = true
+			if changed and scripted then
+				fire(value)
 			end
 		end
 		function obj.GetValue()
@@ -840,6 +927,26 @@ function World:buildGlobals()
 		end,
 	})
 	set("MinimalSliderWithSteppersMixin", { Event = { OnValueChanged = "OnValueChanged" } })
+	world.gameRules = {}
+	set("C_GameRules", {
+		IsGameRuleActive = function(rule)
+			return world.gameRules[rule] == true
+		end,
+	})
+	-- UIParentPanelManager.lua:836. The emulator re-places managed frames in their default position.
+	set("ManageFramePositions", function()
+		if world.depth == 0 then
+			world:violation("taint: addon called ManageFramePositions")
+		end
+		world:blizzard(function()
+			world.managedLayouts = (world.managedLayouts or 0) + 1
+			for _, frame in ipairs(world.systemFrames) do
+				if frame.isManagedFrame and frame:IsInDefaultPosition() then
+					world:placeManaged(frame)
+				end
+			end
+		end)
+	end)
 	set("C_AddOns", {
 		IsAddOnLoaded = function(name)
 			local loaded = world.loaded[name] == true
@@ -911,12 +1018,22 @@ function World:fire(event, ...)
 	end
 end
 
--- Runs the C_Timer.After(0) callbacks queued so far, like the next rendered frame does.
+-- Blizzard's RunNextFrame: a next-frame callback that runs as Blizzard code.
+function World:runNextFrame(fn)
+	self.timers[#self.timers + 1] = { blizzard = fn }
+end
+
+-- Runs the next-frame callbacks queued so far (C_Timer.After(0) and Blizzard's RunNextFrame), like
+-- the next rendered frame does. Returns how many ran.
 function World:nextFrame()
 	local queue = self.timers
 	self.timers = {}
-	for _, fn in ipairs(queue) do
-		self:addonCall(fn)
+	for _, entry in ipairs(queue) do
+		if type(entry) == "table" then
+			self:blizzard(entry.blizzard)
+		else
+			self:addonCall(entry)
+		end
 	end
 	return #queue
 end
@@ -966,6 +1083,8 @@ end
 
 -- Loads TinyTweaks like the client: files in TOC order with (addonName, ns), then SavedVariables,
 -- then ADDON_LOADED. opts.blizzardFirst = false loads it before the Blizzard addons.
+-- opts.replace = { ["File.lua"] = "/path/to/other.lua" } loads another copy of a TOC file, e.g. an
+-- older revision, to prove that a regression test fails without a fix.
 function World:loadAddon(opts)
 	opts = opts or {}
 	if opts.blizzardFirst ~= false then
@@ -975,7 +1094,7 @@ function World:loadAddon(opts)
 	end
 	local ns = {}
 	for _, file in ipairs(wow.tocFiles()) do
-		local chunk, err = loadfile(file)
+		local chunk, err = loadfile(opts.replace and opts.replace[file] or file)
 		if not chunk then
 			error("emulator: " .. tostring(err))
 		end
@@ -997,6 +1116,23 @@ function World:saved()
 end
 
 -- Blizzard: Edit Mode ---------------------------------------------------------------------------
+-- Source references are to Blizzard_EditMode/Shared/ (build 1.60.1): ET = EditModeSystemTemplates.lua,
+-- EM = EditModeManager.lua, ED = EditModeDialogs.lua.
+
+local function anchorsEqual(a, b)
+	if a and b then
+		return a.point == b.point and a.relativeTo == b.relativeTo and a.relativePoint == b.relativePoint
+			and math.abs(a.offsetX - b.offsetX) <= 0.1 and math.abs(a.offsetY - b.offsetY) <= 0.1
+	end
+	return a == b
+end
+
+local function copyAnchorInto(target, source)
+	if target and source then
+		target.point, target.relativeTo, target.relativePoint = source.point, source.relativeTo, source.relativePoint
+		target.offsetX, target.offsetY = source.offsetX, source.offsetY
+	end
+end
 
 function World:createEditMode()
 	local world = self
@@ -1012,15 +1148,72 @@ function World:createEditMode()
 	self:defineMethod(manager, "RegisterSystemFrame", function(this, frame)
 		table.insert(this.registeredSystemFrames, frame)
 	end, true)
-	self:defineMethod(manager, "UpdateSystems", function(this)
+	self:defineMethod(manager, "OnEditModeSystemAnchorChanged", function(this)
+		this.editModeSystemAnchorDirty = true -- EM:1039
+	end, true)
+	-- EM:1479 initSystemAnchor: everything but managed frames in their default position starts at
+	-- TOPLEFT of UIParent before the layout is applied.
+	self:defineMethod(manager, "InitSystemAnchors", function(this)
 		for _, frame in ipairs(this.registeredSystemFrames) do
-			frame:ApplySystemAnchor()
+			if not (frame.isManagedFrame and frame:IsInDefaultPosition()) then
+				frame:ClearAllPoints()
+				frame:SetPoint("TOPLEFT", world.UIParent, "TOPLEFT", 0, 0)
+			end
 		end
 	end, true)
+	-- EM:1483 UpdateSystems → EM:1492 UpdateSystem → frame:UpdateSystem(systemInfo).
+	self:defineMethod(manager, "UpdateSystems", function(this)
+		for _, frame in ipairs(this.registeredSystemFrames) do
+			frame:UpdateSystem(world:nextSystemInfo(frame))
+		end
+	end, true)
+	-- EM:400 OnSystemSettingChange → ET:268 UpdateSystemSettingValue.
+	self:defineMethod(manager, "OnSystemSettingChange", function(_, frame, setting, value)
+		frame:UpdateSystemSettingValue(setting, value)
+	end, true)
+	-- EM:372 OnSystemPositionChange → EM:316 UpdateSystemAnchorInfo.
+	self:defineMethod(manager, "OnSystemPositionChange", function(this, frame)
+		local info = frame.systemInfo
+		local scale = frame:GetScale()
+		local changed = false
+		for index, key in ipairs({ "anchorInfo", "anchorInfo2" }) do
+			local point, relativeTo, relativePoint, x, y = frame:GetPoint(index)
+			if index == 1 and point and not relativeTo then
+				relativeTo = world.UIParent
+			end
+			local new
+			if point then
+				new = {
+					point = point,
+					relativeTo = relativeTo and relativeTo:GetName() or "UIParent", -- a name, EM:262
+					relativePoint = relativePoint,
+					offsetX = x * scale,
+					offsetY = y * scale,
+				}
+			end
+			if not anchorsEqual(info[key], new) then
+				copyAnchorInto(info[key], new) -- in place, and only into an existing table (EM:248)
+				changed = true
+			end
+		end
+		if changed then
+			info.isInDefaultPosition = false
+			if world.dialog then
+				world.dialog:UpdateDialog(frame)
+			end
+		end
+		this:OnEditModeSystemAnchorChanged()
+	end, true)
 	self:defineMethod(manager, "UpdateRaidContainerFlow", function()
+		-- EM:477: FlowContainer_SetOrientation and FlowContainer_SetMaxPerLine each re-flow at the
+		-- container's current size, then TryUpdate.
 		local container = G.CompactRaidFrameContainer
-		if container and container:ReadyToUpdate() and not container.flowPauseUpdates then
-			container:LayoutFrames()
+		if container then
+			world:blizzardFlow(container)
+			world:blizzardFlow(container)
+			if container:ReadyToUpdate() then
+				container:LayoutFrames()
+			end
 		end
 	end, true)
 
@@ -1036,8 +1229,9 @@ function World:createEditMode()
 	local active, inactive = {}, {}
 	self.sliderPool = { active = active, inactive = inactive }
 	local poolBacking = {
+		-- A secure pool: next-order iteration yielding (frame, true).
 		EnumerateActive = function()
-			return pairs(active)
+			return next, active, nil
 		end,
 	}
 	setmetatable(pool, {
@@ -1065,43 +1259,53 @@ function World:createEditMode()
 			return pool
 		end
 	end, false)
+	-- ED:598: only for the attached frame; sliders are released and re-acquired, except one whose
+	-- thumb is being dragged, which keeps its frame. SetupSetting sets .setting and the value text,
+	-- and the slider's FormatValue re-shows the label (MinimalSlider.lua:160-172).
 	self:defineMethod(dialog, "UpdateSettings", function(this, frame)
-		frame = frame or this.attachedToSystem
-		for sf in pairs(active) do
-			active[sf] = nil
-			sf:Hide()
-			table.insert(inactive, sf)
-		end
-		if not frame then
+		if frame == nil or frame ~= this.attachedToSystem then
 			return
+		end
+		local dragging
+		for sf in pairs(active) do
+			if world.ws[sf.Slider].dragging then
+				dragging = sf
+			else
+				active[sf] = nil
+				sf:Hide()
+				table.insert(inactive, sf)
+			end
 		end
 		local fs = world.ws[frame]
 		for _, setting in ipairs(fs.settingOrder or {}) do
 			local def = fs.settings[setting]
-			if def.displayType == world.Enum.EditModeSettingDisplayType.Slider and not def.hidden then
-				local sf = acquireSlider()
+			if def.displayType == world.Enum.EditModeSettingDisplayType.Slider and frame:ShouldShowSetting(setting) then
+				local sf
+				if dragging and dragging.setting == setting then
+					sf = dragging
+				else
+					sf = acquireSlider()
+				end
 				world:bset(sf, "setting", setting)
 				sf.Slider.RightText:SetText(tostring(frame:GetSettingValue(setting)))
-				sf.Slider.RightText:SetAlpha(1)
+				sf.Slider.RightText:Show()
 			end
 		end
 	end, true)
+	-- ED:556: UpdateSettings, UpdateButtons, UpdateExtraButtons, UpdateSizeAndAnchors.
 	self:defineMethod(dialog, "UpdateDialog", function(this, frame)
 		this:UpdateSettings(frame)
 	end, true)
+	-- ED:537: attach, update, then show.
 	self:defineMethod(dialog, "AttachToSystemFrame", function(this, frame)
 		this.attachedToSystem = frame
 		this:UpdateDialog(frame)
 		this:Show()
 	end, true)
+	-- ED:659.
 	self:defineMethod(dialog, "OnSettingValueChanged", function(this, setting, value)
-		local frame = this.attachedToSystem
-		world:setSettingValue(frame, setting, value)
-		for sf in pairs(active) do
-			if sf.setting == setting then
-				sf.Slider.RightText:SetText(tostring(frame:GetSettingValue(setting)))
-				sf.Slider.RightText:SetAlpha(1)
-			end
+		if this.attachedToSystem then
+			manager:OnSystemSettingChange(this.attachedToSystem, setting, value)
 		end
 	end, true)
 
@@ -1111,29 +1315,56 @@ function World:createEditMode()
 	end
 end
 
--- Blizzard: stores a display value as a raw step and re-applies it if the step changed.
-function World:setSettingValue(frame, setting, value)
-	local def = assert(self.ws[frame].settings[setting], "frame has no setting " .. tostring(setting))
-	local raw = value
-	if def.displayType == self.Enum.EditModeSettingDisplayType.Slider then
-		value = math.max(def.min, math.min(def.max, value))
-		raw = math.floor((value - def.min) / def.step + 0.5)
+-- The systemInfo Blizzard hands a frame on the next layout apply: a new table built from the current
+-- one plus any changes queued with applyLayoutData / switchLayout / revertSystem.
+function World:nextSystemInfo(frame)
+	local s = self.ws[frame]
+	local change = s.nextChange or {}
+	s.nextChange = nil
+	local current = frame.systemInfo
+	local info = {
+		anchorInfo = deepcopy(change.anchorInfo or current.anchorInfo),
+		anchorInfo2 = deepcopy(current.anchorInfo2),
+		isInDefaultPosition = current.isInDefaultPosition,
+		settings = {},
+	}
+	if change.isInDefaultPosition ~= nil then
+		info.isInDefaultPosition = change.isInDefaultPosition
+	elseif change.anchorInfo then
+		info.isInDefaultPosition = false
 	end
-	if raw == def.raw then
-		return false
+	for setting, def in pairs(s.settings) do
+		info.settings[setting] = def.raw
 	end
-	def.raw = raw
-	if def.method then
-		frame[def.method](frame)
+	for key, value in pairs(change.settings or {}) do
+		local setting = self:settingId(frame, key)
+		local def = s.settings[setting]
+		if def.displayType == self.Enum.EditModeSettingDisplayType.Slider then
+			info.settings[setting] = (value - def.min) / def.step
+		else
+			info.settings[setting] = value
+		end
 	end
-	return true
+	return info
+end
+
+-- Blizzard positions a managed frame in its default position through its container. The emulator
+-- has no containers; it puts the frame at its default point.
+function World:placeManaged(frame)
+	local p = self.ws[frame].defaultPoint
+	frame:ClearAllPoints()
+	frame:SetPoint(p.point, p.relativeTo, p.relativePoint, p.offsetX, p.offsetY)
 end
 
 -- Settings spec: { key = "FrameSize", value = 100, min = 50, max = 200, step = 5,
 --   kind = "scale" | "alpha" | nil, method = "UpdateSystemSettingFrameSize", type = "Slider" | "Checkbox", hidden }
+-- Frame spec: name, system, index, systemName, protected, initialized, locked, managed,
+--   anchorInfo, anchorInfo2, isInDefaultPosition, defaultPoint, width, height, settings.
 function World:addSystemFrame(spec)
 	local world = self
 	local Enum = self.Enum
+	local G = self.G
+	local widget = self.methods.Frame
 	local system = assert(Enum.EditModeSystem[spec.system], "unknown system " .. tostring(spec.system))
 	local settingEnum = Enum[SETTING_ENUMS[spec.system] or ""] or {}
 
@@ -1143,7 +1374,8 @@ function World:addSystemFrame(spec)
 	s.initialized = spec.initialized ~= false
 	s.width, s.height = spec.width or 200, spec.height or 80
 	s.settings, s.settingOrder = {}, {}
-	s.defaultPoint = { "TOPLEFT", self.UIParent, "TOPLEFT", 10, -10 }
+	s.defaultPoint = spec.defaultPoint
+		or { point = "TOPLEFT", relativeTo = "UIParent", relativePoint = "TOPLEFT", offsetX = 10, offsetY = -10 }
 
 	local displayInfo = {}
 	self:blizzard(function()
@@ -1151,14 +1383,74 @@ function World:addSystemFrame(spec)
 		frame.systemIndex = spec.index and Enum.EditModeUnitFrameSystemIndices[spec.index] or nil
 		frame.systemNameString = spec.systemName or spec.name
 		frame.isLocked = spec.locked or nil
+		frame.isManagedFrame = spec.managed or nil
 		frame.systemInfo = {
-			anchorInfo = spec.anchorInfo and deepcopy(spec.anchorInfo) or nil,
+			-- ResetToDefaultPosition stores the default anchor in anchorInfo (ET:310).
+			anchorInfo = deepcopy(spec.anchorInfo or s.defaultPoint),
 			anchorInfo2 = spec.anchorInfo2 and deepcopy(spec.anchorInfo2) or nil,
 			isInDefaultPosition = spec.isInDefaultPosition or false,
 		}
 		frame.settingDisplayInfoMap = displayInfo
-		frame.SetPointBase = world.methods.Frame.SetPoint
+		frame.snappedFrames = {}
+		-- OnSystemLoad (ET:9-17): the widget methods stay reachable as *Base; SetScale, SetPoint and
+		-- ClearAllPoints become Blizzard Lua (below).
+		frame.SetScaleBase = widget.SetScale
+		frame.SetPointBase = widget.SetPoint
+		frame.ClearAllPointsBase = widget.ClearAllPoints
 	end)
+
+	-- ET:117 SetScaleOverride: keeps the frame in place across the scale change, through the SetPoint
+	-- override; a managed frame in its default position re-runs the managed layout.
+	self:defineMethod(frame, "SetScale", function(this, newScale)
+		local oldScale = this:GetScale()
+		this:SetScaleBase(newScale)
+		if oldScale == newScale then
+			return
+		end
+		for i = 1, this:GetNumPoints() do
+			local point, relativeTo, relativePoint, x, y = this:GetPoint(i)
+			this:SetPoint(point, relativeTo, relativePoint, x * oldScale / newScale, y * oldScale / newScale)
+		end
+		if this.isManagedFrame and this:IsInDefaultPosition() then
+			G.ManageFramePositions()
+		end
+	end, true)
+	-- ET:147 SetPointOverride: records the snap and marks Edit Mode's anchors dirty.
+	self:defineMethod(frame, "SetPoint", function(this, point, relativeTo, relativePoint, x, y)
+		this:SetPointBase(point, relativeTo, relativePoint, x, y)
+		this:SetSnappedToFrame(relativeTo)
+		local manager = rawget(G, "EditModeManagerFrame")
+		if manager then
+			manager:OnEditModeSystemAnchorChanged()
+		end
+	end, true)
+	-- ET:153 ClearAllPointsOverride.
+	self:defineMethod(frame, "ClearAllPoints", function(this)
+		this:ClearAllPointsBase()
+		this:ClearFrameSnap()
+	end, true)
+	-- ET:719-735.
+	self:defineMethod(frame, "SetSnappedToFrame", function(this, target)
+		if type(target) == "string" then
+			target = G[target]
+		end
+		if type(target) == "table" and target.AddSnappedFrame then
+			target:AddSnappedFrame(this)
+			this.snappedToFrame = target
+		end
+	end, true)
+	self:defineMethod(frame, "ClearFrameSnap", function(this)
+		if this.snappedToFrame then
+			this.snappedToFrame:RemoveSnappedFrame(this)
+			this.snappedToFrame = nil
+		end
+	end, true)
+	self:defineMethod(frame, "AddSnappedFrame", function(this, other)
+		this.snappedFrames[other] = true
+	end, true)
+	self:defineMethod(frame, "RemoveSnappedFrame", function(this, other)
+		this.snappedFrames[other] = nil
+	end, true)
 
 	for _, def in ipairs(spec.settings or {}) do
 		local setting = assert(settingEnum[def.key], "unknown setting " .. tostring(def.key) .. " for " .. spec.system)
@@ -1168,7 +1460,7 @@ function World:addSystemFrame(spec)
 			min = def.min or 0, max = def.max or 100, step = def.step or 1,
 		}
 		if displayType == Enum.EditModeSettingDisplayType.Slider then
-			entry.raw = math.floor(((def.value or entry.min) - entry.min) / entry.step + 0.5)
+			entry.raw = ((def.value or entry.min) - entry.min) / entry.step
 		else
 			entry.raw = def.value or 0
 		end
@@ -1176,7 +1468,15 @@ function World:addSystemFrame(spec)
 		s.settingOrder[#s.settingOrder + 1] = setting
 		displayInfo[setting] = { setting = setting, type = displayType, minValue = entry.min, maxValue = entry.max, stepSize = entry.step }
 		if def.method then
+			-- The size/scale/opacity handlers are one widget call each (ET:2578, 2681, 2751, 2784, 2788,
+			-- 2852, 2898, 3822, 3850, 1629, 1586, 2141, 3001, 3518); SetScale is the override above.
+			-- PartyFrame skips its size while a game rule forces the party frame scale
+			-- (Blizzard_UnitFrame/Shared/PartyFrame.lua:28).
 			self:defineMethod(frame, def.method, function(this)
+				if entry.kind == "scale" and this.systemIndex == Enum.EditModeUnitFrameSystemIndices.Party
+					and G.C_GameRules.IsGameRuleActive(Enum.GameRule.ForcedPartyFrameScale) then
+					return
+				end
 				local value = this:GetSettingValue(setting)
 				if entry.kind == "scale" then
 					this:SetScale(value / 100)
@@ -1190,6 +1490,8 @@ function World:addSystemFrame(spec)
 	self:defineMethod(frame, "HasSetting", function(_, setting)
 		return s.settings[setting] ~= nil
 	end, false)
+	-- ET:483: 0 until initialized or for a missing setting; raw = settingMap value, display =
+	-- Clamp(raw * step + min, min, max) (EditModeSettingDisplayInfo.lua:8-14).
 	self:defineMethod(frame, "GetSettingValue", function(_, setting, useRawValue)
 		local def = s.settings[setting]
 		if not def or not s.initialized then
@@ -1198,7 +1500,7 @@ function World:addSystemFrame(spec)
 		if useRawValue or def.displayType ~= Enum.EditModeSettingDisplayType.Slider then
 			return def.raw
 		end
-		return def.min + def.raw * def.step
+		return math.max(def.min, math.min(def.max, def.min + def.raw * def.step))
 	end, false)
 	self:defineMethod(frame, "GetSettingValueBool", function(_, setting)
 		local def = s.settings[setting]
@@ -1211,33 +1513,114 @@ function World:addSystemFrame(spec)
 	self:defineMethod(frame, "IsInitialized", function()
 		return s.initialized
 	end, false)
+	self:defineMethod(frame, "IsInDefaultPosition", function(this)
+		return s.initialized and this.systemInfo.isInDefaultPosition or false
+	end, false)
 	self:defineMethod(frame, "GetSystemName", function(this)
 		return this.systemNameString
 	end, false)
-	self:defineMethod(frame, "ApplySystemAnchor", function(this)
-		this:ClearAllPoints()
-		local info = this.systemInfo
-		if info.isInDefaultPosition or not info.anchorInfo then
-			local p = s.defaultPoint
-			this:SetPoint(p[1], p[2], p[3], p[4], p[5])
+	-- ET:268 UpdateSystemSettingValue: stores the raw step (unrounded) and updates only on a change.
+	self:defineMethod(frame, "UpdateSystemSettingValue", function(this, setting, newValue)
+		if not s.initialized then
 			return
 		end
-		local scale = this:GetScale()
-		for _, a in ipairs({ info.anchorInfo, info.anchorInfo2 }) do
-			this:SetPoint(a.point, a.relativeTo, a.relativePoint, a.offsetX / scale, a.offsetY / scale)
+		local def = s.settings[setting]
+		if not def then
+			return
+		end
+		local raw = newValue
+		if def.displayType == Enum.EditModeSettingDisplayType.Slider then
+			raw = (newValue - def.min) / def.step
+		end
+		if def.raw ~= raw then
+			def.raw = raw
+			this:UpdateSystemSetting(setting)
 		end
 	end, true)
-	self:defineMethod(frame, "SnapToFrame", function() end, true)
-	self:defineMethod(frame, "OnSystemPositionChange", function(this)
-		local pin = assert(s.pendingAnchor, "dragSystem sets the new pin")
-		s.pendingAnchor = nil
-		this.systemInfo.anchorInfo = deepcopy(pin)
+	-- ET:409 base UpdateSystemSetting (marks dirty, refreshes the dialog), then the derived dispatch
+	-- runs UpdateSystemSetting<Name> for a dirty setting and clears it.
+	self:defineMethod(frame, "UpdateSystemSetting", function(this, setting, entireSystemUpdate)
+		local def = s.settings[setting]
+		if not entireSystemUpdate then
+			def.dirty = true
+			if world.dialog then
+				world.dialog:UpdateDialog(this)
+			end
+		end
+		if def.dirty then
+			def.dirty = false
+			if def.method then
+				this[def.method](this)
+			end
+		end
+	end, true)
+	-- ET:385 UpdateSystem: settings diff → ApplySystemAnchor → dialog → handlers of dirty settings.
+	self:defineMethod(frame, "UpdateSystem", function(this, systemInfo)
+		for setting, raw in pairs(systemInfo.settings or {}) do
+			local def = s.settings[setting]
+			if def and def.raw ~= raw then
+				def.raw = raw
+				def.dirty = true
+			end
+		end
+		this.systemInfo = {
+			anchorInfo = systemInfo.anchorInfo,
+			anchorInfo2 = systemInfo.anchorInfo2,
+			isInDefaultPosition = systemInfo.isInDefaultPosition,
+		}
+		this:ApplySystemAnchor()
+		if world.dialog then
+			world.dialog:UpdateDialog(this)
+		end
+		for _, setting in ipairs(s.settingOrder) do
+			this:UpdateSystemSetting(setting, true)
+		end
+	end, true)
+	-- ET:350 ApplySystemAnchor: a managed frame in its default position is placed by its container;
+	-- otherwise the anchors from systemInfo at the frame's scale, through the overrides. The cast bar
+	-- re-applies its size after anchoring (ET:1853).
+	self:defineMethod(frame, "ApplySystemAnchor", function(this)
+		local info = this.systemInfo
+		if this.isManagedFrame and this:IsInDefaultPosition() then
+			world:placeManaged(this)
+		else
+			this:ClearAllPoints()
+			local scale = this:GetScale()
+			for _, a in ipairs({ info.anchorInfo, info.anchorInfo2 }) do
+				this:SetPoint(a.point, a.relativeTo, a.relativePoint, a.offsetX / scale, a.offsetY / scale)
+			end
+		end
+		if this.system == Enum.EditModeSystem.CastBar and this.UpdateSystemSettingBarSize then
+			this:UpdateSystemSettingBarSize()
+		end
+	end, true)
+	-- ET:311 ResetToDefaultPosition: the default anchor, back in the default position, re-anchored
+	-- (a managed frame returns to its container), then the dialog refreshes. No setting handler runs.
+	self:defineMethod(frame, "ResetToDefaultPosition", function(this)
+		this.systemInfo.anchorInfo = deepcopy(world.ws[this].defaultPoint)
 		this.systemInfo.anchorInfo2 = nil
-		this.systemInfo.isInDefaultPosition = false
-		-- The frame was dropped at the pin.
-		local scale = this:GetScale()
+		this.systemInfo.isInDefaultPosition = true
+		this:ApplySystemAnchor()
+		world.dialog:UpdateDialog(this)
+	end, true)
+	-- ET:766: the frame snaps to the reported point (offsets from GetSnapOffsets; the emulator places
+	-- the final pin itself in dragSystem).
+	self:defineMethod(frame, "SnapToFrame", function(this, info)
 		this:ClearAllPoints()
-		this:SetPoint(pin.point, pin.relativeTo, pin.relativePoint, pin.offsetX / scale, pin.offsetY / scale)
+		this:SetPoint(info.point, info.frame, info.relativePoint, 0, 0)
+	end, true)
+	-- ET:737 BreakFrameSnap: TOPLEFT of UIParent from the current rect, plus the nudge.
+	self:defineMethod(frame, "BreakFrameSnap", function(this, dx, dy)
+		local scale = this:GetScale()
+		local x = this:GetLeft() + (dx or 0)
+		local y = -((world.UIParent:GetHeight() - this:GetTop() * scale) / scale) + (dy or 0)
+		this:ClearAllPoints()
+		this:SetPoint("TOPLEFT", world.UIParent, "TOPLEFT", x, y)
+		this:OnSystemPositionChange()
+	end, true)
+	-- ET:919.
+	self:defineMethod(frame, "OnSystemPositionChange", function(this)
+		world.manager:OnSystemPositionChange(this)
 	end, true)
 
 	-- Blizzard applies the setup, then registers the frame with Edit Mode.
@@ -1258,8 +1641,20 @@ function World:addSystemFrame(spec)
 end
 
 -- Blizzard: raid frames -------------------------------------------------------------------------
+-- Source references are to Blizzard_CompactRaidFrames/Blizzard_CompactRaidFrameContainer.lua (C),
+-- Blizzard_UnitFrame/Shared/CompactRaidGroup.lua (G) and Blizzard_SharedXML FlowContainer.lua.
 
-local GROUP_WIDTH, MEMBER_HEIGHT, TITLE_HEIGHT = 72, 36, 14
+local TITLE_HEIGHT = 14
+
+-- G:95 CompactRaidGroup_UpdateLayout for vertical groups: the title, member 1 always (minUnitFrames
+-- = 1), every shown member after it; +8 width / +2 height with the border.
+function World:groupSize(group)
+	local m = self.raidMember
+	local members = self.ws[group].members
+	local width = m.width + (m.border and 8 or 0)
+	local height = TITLE_HEIGHT + m.height * math.max(members, 1) + (m.border and 2 or 0)
+	return width, height
+end
 
 function World:createRaidContainer()
 	local world = self
@@ -1272,9 +1667,12 @@ function World:createRaidContainer()
 	self:bset(container, "flowFrames", {})
 	self:bset(container, "flowFrameTypes", {})
 	self:bset(container, "flowOrientation", "vertical")
+	self:bset(container, "flowMaxPerLine", 5) -- separate groups modes (EM:483-488)
 	self:bset(container, "flowVerticalSpacing", 0)
 	self:bset(container, "flowHorizontalSpacing", 0)
 	self.groups = {}
+	self.roster = { 0, 0, 0, 0, 0, 0, 0, 0 }
+	self.raidMember = { width = 72, height = 36, border = false }
 
 	self:defineMethod(container, "GetGroupMode", function()
 		return cs.groupMode
@@ -1282,26 +1680,61 @@ function World:createRaidContainer()
 	self:defineMethod(container, "ReadyToUpdate", function()
 		return cs.ready
 	end, false)
+	-- C:233 LayoutFrames: hide what was flowed, re-add only used groups (C:288-340), flow at
+	-- 3000x3000, size to the shown children (ResizeLayoutMixin:Layout), and resize from the visible
+	-- bounds one frame later (C:187 RefreshSize).
 	self:defineMethod(container, "LayoutFrames", function(this)
+		for _, object in ipairs(this.flowFrames) do
+			if type(object) == "table" and object.unusedFunc then
+				object:unusedFunc()
+			end
+		end
+		this.flowFrames, this.flowFrameTypes = {}, {}
+		if this:GetGroupMode() == "discrete" then
+			for i = 1, 8 do
+				if world.roster[i] > 0 then
+					local group = G.CompactRaidGroup_GenerateForGroup(i)
+					group.unusedFunc = group.Hide
+					group:Show()
+					table.insert(this.flowFrames, group)
+					table.insert(this.flowFrameTypes, "object")
+				end
+			end
+		end
+		this:SetSize(3000, 3000)
 		world:blizzardFlow(this)
+		world:sizeToChildren(this)
+		world.blizzardLayouts = (world.blizzardLayouts or 0) + 1
+		if not cs.pendingSizeRefresh then
+			cs.pendingSizeRefresh = true
+			world:runNextFrame(function()
+				world:refreshContainerSize(this)
+				cs.pendingSizeRefresh = nil
+			end)
+		end
 	end, true)
 
+	-- G:30: creates the group on first use; a new group lays out its members right away.
 	rawset(G, "CompactRaidGroup_GenerateForGroup", function(index)
 		if world.depth == 0 then
 			world:violation("taint: addon called CompactRaidGroup_GenerateForGroup")
 		end
-		world:blizzard(function()
-			if world.groups[index] then
-				return
+		return world:blizzard(function()
+			local existing = world.groups[index]
+			if existing then
+				return existing, false
 			end
 			local group = world:newWidget("Frame", "CompactRaidGroup" .. index, container, true)
 			local gs = world.ws[group]
 			gs.protected = true
-			gs.width, gs.height = GROUP_WIDTH, TITLE_HEIGHT
-			gs.members = 0
+			gs.members = world.roster[index]
 			group.isFlowGroup = true
-			world:defineMethod(group, "updateLayoutFunc", function() end, true)
+			world:defineMethod(group, "updateLayoutFunc", function(this)
+				this:SetSize(world:groupSize(this))
+			end, true)
 			world.groups[index] = group
+			group:updateLayoutFunc()
+			return group, true
 		end)
 	end)
 
@@ -1320,8 +1753,9 @@ function World:createRaidContainer()
 	})
 end
 
--- FlowContainer_DoLayout for objects and line breaks (no atomic sections, spacers, flagged or
--- target frames). (verify)
+-- FlowContainer_DoLayout for objects and line breaks (no atomic sections, spacers, flagged or target
+-- frames): a flow group, and the object after one, starts a new line; a line also wraps at
+-- flowMaxPerLine or at the container's current primary size.
 function World:blizzardFlow(container)
 	local horizontal = container.flowOrientation == "horizontal"
 	local primary, secondary = "GetHeight", "GetWidth"
@@ -1331,15 +1765,17 @@ function World:blizzardFlow(container)
 		primary, secondary = "GetWidth", "GetHeight"
 		primarySpacing, secondarySpacing = secondarySpacing, primarySpacing
 	end
-	local secondaryOffset, primaryOffset, lineMax = 0, 0, 0
+	local limit = container[primary](container)
+	local maxPerLine = container.flowMaxPerLine
+	local secondaryOffset, primaryOffset, lineMax, line = 0, 0, 0, 1
 	local last
-	local maxX, maxY = 0, 0
 	for i, object in ipairs(container.flowFrames) do
 		local objectType = container.flowFrameTypes[i]
-		if objectType == "linebreak" or (objectType == "object" and (object.isFlowGroup or (last and last.isFlowGroup))) then
+		if objectType == "linebreak" or (objectType == "object" and (object.isFlowGroup or (last and last.isFlowGroup)
+			or (maxPerLine and line > maxPerLine) or secondaryOffset + object[primary](object) > limit)) then
 			secondaryOffset = 0
 			primaryOffset = primaryOffset + lineMax + secondarySpacing
-			lineMax = 0
+			lineMax, line = 0, 1
 		end
 		if objectType == "object" then
 			local left, top
@@ -1350,62 +1786,88 @@ function World:blizzardFlow(container)
 			end
 			object:ClearAllPoints()
 			object:SetPoint("TOPLEFT", container, "TOPLEFT", left, -top)
-			if object:IsShown() then
-				maxX = math.max(maxX, left + object:GetWidth())
-				maxY = math.max(maxY, top + object:GetHeight())
-			end
 			secondaryOffset = secondaryOffset + object[primary](object) + primarySpacing
 			lineMax = math.max(lineMax, object[secondary](object))
+			line = line + 1
 			last = object
 		end
 	end
-	if maxX > 0 and maxY > 0 then
-		container:SetSize(maxX, maxY)
-	end
-	self.blizzardLayouts = (self.blizzardLayouts or 0) + 1
 end
 
--- Sets the raid roster as members per group (1-8) and runs Blizzard's update for it.
-function World:setRaidRoster(counts)
-	local G = self.G
+-- Extent of the container's shown children, from its top-left: { right, bottom } or nil.
+function World:childExtent(container, visibleOnly)
+	local minX, minY, maxX, maxY
+	for _, child in ipairs(self.ws[container].children) do
+		local cs = self.ws[child]
+		local p = cs.points[1]
+		local shown = visibleOnly and child:IsVisible() or (not visibleOnly and cs.shown)
+		if shown and p and p[1] == "TOPLEFT" and p[2] == container and p[3] == "TOPLEFT" then
+			local left, top = p[4], -p[5]
+			minX = math.min(minX or left, left)
+			minY = math.min(minY or top, top)
+			maxX = math.max(maxX or 0, left + cs.width)
+			maxY = math.max(maxY or 0, top + cs.height)
+		end
+	end
+	return minX, minY, maxX, maxY
+end
+
+-- ResizeLayoutMixin:Layout (LayoutFrame.lua:488): the container takes the extent of its shown children.
+function World:sizeToChildren(container)
+	local _, _, maxX, maxY = self:childExtent(container, false)
+	if maxX and maxX > 0 and maxY > 0 then
+		container:SetSize(maxX, maxY)
+	end
+end
+
+-- C:162 GetBounds / C:187 RefreshSize over the visible groups. (With nothing visible Blizzard would
+-- compute a negative size; the emulator leaves the size alone.)
+function World:refreshContainerSize(container)
+	local minX, minY, maxX, maxY = self:childExtent(container, true)
+	if minX then
+		container:SetSize(maxX - minX, maxY - minY)
+	end
+end
+
+-- Sets the raid roster as members per group (1-8) and runs Blizzard's updates for it. Existing groups
+-- handle GROUP_ROSTER_UPDATE themselves (G:8-15) and the container re-lays out on the same event; the
+-- order between them isn't fixed (C:266-267). opts.groupsAfter = true runs the groups after the
+-- container, so the container flows them at their old size.
+function World:setRaidRoster(counts, opts)
+	opts = opts or {}
+	for i = 1, 8 do
+		self.roster[i] = counts[i] or 0
+	end
 	self:blizzard(function()
-		for i = 1, 8 do
-			if (counts[i] or 0) > 0 and not self.groups[i] then
-				G.CompactRaidGroup_GenerateForGroup(i)
+		local function updateGroups()
+			for i = 1, 8 do
+				local group = self.groups[i]
+				if group then
+					self.ws[group].members = self.roster[i]
+					group:updateLayoutFunc()
+				end
 			end
 		end
-		local flowFrames, flowTypes = {}, {}
-		for i = 1, 8 do
-			local group = self.groups[i]
-			if group then
-				local members = counts[i] or 0
-				local gs = self.ws[group]
-				gs.members = members
-				group:SetSize(gs.fixedWidth or GROUP_WIDTH, TITLE_HEIGHT + members * (gs.memberHeight or MEMBER_HEIGHT))
-				group:SetShown(members > 0)
-				group:updateLayoutFunc()
-				flowFrames[#flowFrames + 1] = group
-				flowTypes[#flowTypes + 1] = "object"
-			end
+		if not opts.groupsAfter then
+			updateGroups()
 		end
-		self.container.flowFrames = flowFrames
-		self.container.flowFrameTypes = flowTypes
 		if self.container:ReadyToUpdate() then
 			self.container:LayoutFrames()
+		end
+		if opts.groupsAfter then
+			updateGroups()
 		end
 	end)
 end
 
--- Blizzard re-lays out the members of each group at a new size (e.g. the frame height setting)
--- without re-flowing the container.
-function World:resizeRaidMembers(width, memberHeight)
+-- Blizzard re-lays out the members of each group at a new size (the frame width/height settings, the
+-- border) without re-flowing the container.
+function World:resizeRaidMembers(width, memberHeight, border)
+	self.raidMember = { width = width, height = memberHeight, border = border or false }
 	self:blizzard(function()
 		for i = 1, 8 do
 			local group = self.groups[i]
 			if group then
-				local gs = self.ws[group]
-				gs.fixedWidth, gs.memberHeight = width, memberHeight
-				group:SetSize(width, TITLE_HEIGHT + gs.members * memberHeight)
 				group:updateLayoutFunc()
 			end
 		end
@@ -1425,7 +1887,7 @@ function World:raidLayout()
 	end)
 end
 
--- Group numbers by on-screen position, e.g. "1 2 3 4 / 5 6 7 8"; "." is an empty cell.
+-- Shown group numbers by on-screen position, e.g. "1 2 3 4 / 5 6 7 8"; "." is an empty cell.
 function World:raidGrid()
 	local xs, ys, at = {}, {}, {}
 	local function addUnique(list, v)
@@ -1439,7 +1901,7 @@ function World:raidGrid()
 	end
 	for i = 1, 8 do
 		local group = self.groups[i]
-		if group then
+		if group and group:IsShown() then
 			local point, rel, relPoint, x, y = group:GetPoint(1)
 			assert(point == "TOPLEFT" and rel == self.container and relPoint == "TOPLEFT", "group " .. i .. " is not anchored to the container")
 			x, y = addUnique(xs, x), addUnique(ys, y)
@@ -1516,11 +1978,21 @@ function World:fineTuneBox(key)
 	return nil
 end
 
+-- Drags a Blizzard slider to a value: its OnValueChanged reaches dialog:OnSettingValueChanged while the
+-- thumb is held, so UpdateSettings keeps that slider's frame.
 function World:moveSlider(key, value)
 	local frame = self.dialog.attachedToSystem
+	local sf = self:sliderFrame(key)
+	local thumb = sf and self.ws[sf.Slider]
+	if thumb then
+		thumb.dragging = true
+	end
 	self:blizzard(function()
 		self.dialog:OnSettingValueChanged(self:settingId(frame, key), value)
 	end)
+	if thumb then
+		thumb.dragging = false
+	end
 end
 
 function World:typeInto(box, text)
@@ -1566,19 +2038,20 @@ function World:hover(region)
 	return lines
 end
 
--- Blizzard changes stored settings/anchors outside the dialog (layout switch, revert, reset):
--- changes = { [frame] = { settings = { Key = value }, anchorInfo = {...}, isInDefaultPosition = bool } }
+-- Queues layout data for frames, as a layout load would bring it:
+-- changes = { [frame] = { settings = { Key = displayValue }, anchorInfo = {...}, isInDefaultPosition = bool } }
+function World:queueLayoutData(changes)
+	for frame, change in pairs(changes or {}) do
+		self.ws[frame].nextChange = change
+	end
+end
+
+-- A layout load, layout switch or Revert All (EM:1010 UpdateLayoutInfo): new systemInfo for every
+-- frame, InitSystemAnchors, then UpdateSystems.
 function World:applyLayoutData(changes)
+	self:queueLayoutData(changes)
 	self:blizzard(function()
-		for frame, change in pairs(changes or {}) do
-			for key, value in pairs(change.settings or {}) do
-				self:setSettingValue(frame, self:settingId(frame, key), value)
-			end
-			if change.anchorInfo ~= nil or change.isInDefaultPosition ~= nil then
-				frame.systemInfo.anchorInfo = change.anchorInfo and deepcopy(change.anchorInfo) or frame.systemInfo.anchorInfo
-				frame.systemInfo.isInDefaultPosition = change.isInDefaultPosition or false
-			end
-		end
+		self.manager:InitSystemAnchors()
 		self.manager:UpdateSystems()
 	end)
 end
@@ -1588,14 +2061,43 @@ function World:switchLayout(name, layoutType, changes)
 	self:applyLayoutData(changes)
 end
 
--- Drag a system frame to a new pin, passing the magnetism snaps Blizzard reported on the way.
+-- The settings dialog's Revert button (EM:407 RevertSystemChanges): one frame's saved systemInfo goes
+-- straight to frame:UpdateSystem; UpdateSystems doesn't run.
+function World:revertSystem(frame, change)
+	self:queueLayoutData({ [frame] = change or {} })
+	self:blizzard(function()
+		frame:UpdateSystem(self:nextSystemInfo(frame))
+	end)
+end
+
+-- Drag a system frame and drop it at a pin. Magnetism calls SnapToFrame once per snap it reports
+-- (Blizzard_EditMode/Shared/EditModeUtil.lua:444-465); the frame ends at the pin, and
+-- OnSystemPositionChange stores where it is (EM:316). Blizzard doesn't move it afterwards.
 function World:dragSystem(frame, anchorInfo, snaps)
 	self:blizzard(function()
 		for _, snap in ipairs(snaps or {}) do
 			frame:SnapToFrame(snap)
 		end
-		self.ws[frame].pendingAnchor = anchorInfo
+		local scale = frame:GetScale()
+		frame:ClearAllPoints()
+		frame:SetPoint(anchorInfo.point, anchorInfo.relativeTo, anchorInfo.relativePoint,
+			anchorInfo.offsetX / scale, anchorInfo.offsetY / scale)
 		frame:OnSystemPositionChange()
+	end)
+end
+
+-- The dialog's "Reset To Default Position" button (ET:311).
+function World:resetToDefaultPosition(frame)
+	self:blizzard(function()
+		frame:ResetToDefaultPosition()
+	end)
+end
+
+-- Arrow-key nudge (ET:49 → ET:737 BreakFrameSnap): re-pinned to UIParent's top left, moved by dx/dy,
+-- no magnetism.
+function World:nudgeSystem(frame, dx, dy)
+	self:blizzard(function()
+		frame:BreakFrameSnap(dx, dy)
 	end)
 end
 
@@ -1722,6 +2224,20 @@ wow.frames = {
 	boss = function(useLarger)
 		local spec = unitFrame("BossTargetFrameContainer", "Boss")
 		table.insert(spec.settings, { key = "UseLargerFrame", type = "Checkbox", value = useLarger and 1 or 0 })
+		return spec
+	end,
+	party = function(extra)
+		return unitFrame("PartyFrame", "Party", extra)
+	end,
+	-- A managed frame (laid out by Blizzard's right-side container while in its default position).
+	durability = function(extra)
+		local spec = {
+			name = "DurabilityFrame", system = "DurabilityFrame", systemName = "Durability", anchorInfo = CENTER,
+			managed = true, settings = { sizeSetting("Size", "UpdateSystemSettingSize") },
+		}
+		for k, v in pairs(extra or {}) do
+			spec[k] = v
+		end
 		return spec
 	end,
 	bags = function()

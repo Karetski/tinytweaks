@@ -103,11 +103,33 @@ test("given_combat_when_addon_code_moves_a_protected_frame_then_the_emulator_fla
 	world:setCombat(true)
 	-- When
 	A.errors(function()
-		frame:SetScale(2)
+		frame:SetScaleBase(2)
 	end, "blocked: addon called SetScale on protected TargetFrame in combat")
 	frame:SetAlpha(0.5)
 	-- Then
 	A.eq(#world:takeViolations(), 1)
+end)
+
+test("given_addon_code_when_it_calls_blizzards_set_scale_or_set_point_override_on_a_system_frame_then_the_emulator_flags_taint", function()
+	-- Given
+	local world = wow.new()
+	world:loadAddon()
+	local frame = world:addSystemFrame(wow.frames.target())
+	-- When
+	A.errors(function()
+		frame:SetScale(2)
+	end, "taint: addon called SetScale on TargetFrame")
+	A.errors(function()
+		frame:SetPoint("CENTER", world.UIParent, "CENTER", 0, 0)
+	end, "taint: addon called SetPoint on TargetFrame")
+	A.errors(function()
+		frame:ClearAllPoints()
+	end, "taint: addon called ClearAllPoints on TargetFrame")
+	frame:SetScaleBase(2)
+	frame:SetPointBase("CENTER", world.UIParent, "CENTER", 0, 0)
+	-- Then
+	A.eq(#world:takeViolations(), 3)
+	A.eq(frame:GetScale(), 2)
 end)
 
 test("given_a_hook_on_a_blizzard_method_when_blizzard_calls_it_then_the_hook_runs_as_addon_code_after_it", function()

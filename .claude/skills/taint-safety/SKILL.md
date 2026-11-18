@@ -24,7 +24,7 @@ hooksecurefunc*, and the Patch 12.0.0 API notes on secret values.
 |---|---|
 | `hooksecurefunc(obj, "Method", fn)` and `frame:HookScript(...)` post-hooks | Replacing a Blizzard function or method, `SetScript` on a Blizzard frame, pre-hooks |
 | Reading Blizzard fields and calling Blizzard getters | Writing any field on a Blizzard frame or into a Blizzard table (`settingMap`, `dirtySettings`, `systemInfo`, pools…) |
-| Re-doing the *widget* call Blizzard's handler makes (`SetScale`, `SetAlpha`, `SetPoint` through `frame.SetPointBase or frame.SetPoint`) | Calling Blizzard functions that change Edit Mode state (`OnSystemPositionChange`, `UpdateSystemSetting*`, `OnSettingValueChanged`, `ApplySystemAnchor`, `UpdateSystems`, `SetSettingValue`, `LayoutFrames`…) |
+| Re-doing the *widget* call Blizzard's handler makes. On system frames `SetScale`, `SetPoint` and `ClearAllPoints` are Blizzard Lua overrides: use `SetScaleBase`, `SetPointBase`, `ClearAllPointsBase`, and for scale repeat the override's offset compensation. `SetAlpha` is a plain widget call | Calling Blizzard functions that change Edit Mode state (`OnSystemPositionChange`, `UpdateSystemSetting*`, `OnSettingValueChanged`, `ApplySystemAnchor`, `UpdateSystems`, `SetSettingValue`, `LayoutFrames`…) |
 | Addon frames parented to `UIParent`, anchored to a Blizzard frame | Parenting an addon frame to a Blizzard layout frame (the settings dialog, raid container) whose layout code iterates children |
 | Addon state in local tables keyed by the Blizzard frame (`applied[frame]`, weak-keyed `inputs[slider]`) | Storing addon state as fields on Blizzard frames, including pooled ones |
 | Deferring protected-frame work to `PLAYER_REGEN_ENABLED` | Moving, scaling or showing a protected frame while `InCombatLockdown()` |
@@ -63,6 +63,8 @@ Load only what the work needs:
   parent.
 - A Blizzard method called with `:` that is not a getter (`Get*`, `Is*`, `Has*`,
   `Should*`, `Can*`).
+- `:SetScale(`, `:SetPoint(` or `:ClearAllPoints(` on an Edit Mode system frame: those are
+  Blizzard's overrides, not widget calls.
 - `SetScript` where `HookScript` would do.
 - A protected-frame widget call without an `InCombatLockdown()` guard on the path.
 - A new global, or a missing `local`.

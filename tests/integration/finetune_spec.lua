@@ -279,13 +279,124 @@ test("given_overrides_for_sliders_no_longer_supported_when_the_addon_loads_then_
 	})
 end)
 
--- Point offsets are in the frame's own scale, so SetScale moves a frame whose anchor has non-zero
--- offsets (a grid-line pin, or a Position offset): a pin at x=400 lands at 350 after typing 87.5.
--- Whether this is a bug depends on whether Blizzard re-anchors after its own size slider changes the
--- scale (the emulator assumes it doesn't, so its slider drifts too). Confirm in-game, then turn this
--- into a test: typed size keeps the frame at pin + offset on screen.
-skip("given_a_frame_pinned_off_center_when_typing_a_size_then_it_stays_at_its_pin_on_screen",
-	"needs Blizzard's re-anchor behavior after a scale change (verify in-game)")
+-- Screen offset of the frame's first point: point offsets are in the frame's own scale.
+local function screenOffset(frame)
+	local _, _, _, x, y = frame:GetPoint(1)
+	local scale = frame:GetScale()
+	return x * scale, y * scale
+end
+
+test("given_a_frame_pinned_off_center_when_typing_a_size_then_it_stays_at_its_pin_on_screen", function()
+	-- Given
+	local pin = { point = "CENTER", relativeTo = "UIParent", relativePoint = "CENTER", offsetX = 400, offsetY = -220 }
+	local world, frame = setup(wow.frames.target({ anchorInfo = pin }))
+	-- When
+	world:typeInto(world:fineTuneBox("FrameSize"), "87.5")
+	-- Then
+	A.near(frame:GetScale(), 0.875)
+	local x, y = screenOffset(frame)
+	A.near(x, 400)
+	A.near(y, -220)
+end)
+
+test("given_a_system_frame_when_typing_a_size_then_blizzard_set_scale_override_is_not_run", function()
+	-- Given
+	local world, frame = setup()
+	local before = world:calls(frame, "SetScale")
+	world:bset(world.manager, "editModeSystemAnchorDirty", nil)
+	-- When
+	world:typeInto(world:fineTuneBox("FrameSize"), "87.5")
+	-- Then: the widget SetScale ran (as SetScaleBase), Blizzard's override recorded no snap and left
+	-- Edit Mode's anchors clean
+	A.near(frame:GetScale(), 0.875)
+	A.eq(world:calls(frame, "SetScale"), before + 1)
+	A.eq(world:takeViolations(), {})
+	A.isNil(world.manager.editModeSystemAnchorDirty)
+end)
+
+test("given_a_managed_frame_in_its_default_position_when_selected_then_size_has_no_box_until_it_is_moved", function()
+	-- Given
+	local world, frame = setup(wow.frames.durability({ isInDefaultPosition = true }))
+	-- Then
+	A.isNil(world:fineTuneBox("Size"), "no box while Blizzard's container places it")
+	-- When
+	world:dragSystem(frame, { point = "TOP", relativeTo = "UIParent", relativePoint = "TOP", offsetX = 0, offsetY = -100 }, {})
+	world:selectSystem(frame)
+	-- Then
+	A.truthy(world:fineTuneBox("Size"), "box once moved out of the default position")
+	world:typeInto(world:fineTuneBox("Size"), "87.5")
+	A.near(frame:GetScale(), 0.875)
+	A.eq(world.managedLayouts or 0, 0, "the managed layout never ran from TinyTweaks")
+end)
+
+-- Blizzard re-applies a size only when its slider step changed, so returning to the default position
+-- doesn't undo a typed size by itself; TinyTweaks must put Blizzard's value back.
+test("given_a_typed_size_on_a_managed_frame_when_it_returns_to_its_default_position_then_blizzards_size_applies", function()
+	-- Given
+	local world, frame = setup(wow.frames.durability({ isInDefaultPosition = true }))
+	world:dragSystem(frame, { point = "TOP", relativeTo = "UIParent", relativePoint = "TOP", offsetX = 0, offsetY = -100 }, {})
+	world:selectSystem(frame)
+	world:typeInto(world:fineTuneBox("Size"), "87.5")
+	A.near(frame:GetScale(), 0.875)
+	-- When
+	world:resetToDefaultPosition(frame)
+	-- Then
+	A.near(frame:GetScale(), 1, nil, "Blizzard's slider value")
+	A.isNil(world:fineTuneBox("Size"), "no box while Blizzard's container places it")
+	A.eq(world.managedLayouts or 0, 0, "the managed layout never ran from TinyTweaks")
+end)
+
+test("given_a_typed_size_on_a_managed_frame_in_its_default_position_when_reverted_to_its_saved_pin_then_the_typed_size_returns", function()
+	-- Given
+	local world, frame = setup(wow.frames.durability({ isInDefaultPosition = true }))
+	local pin = { point = "TOP", relativeTo = "UIParent", relativePoint = "TOP", offsetX = 0, offsetY = -100 }
+	world:dragSystem(frame, pin, {})
+	world:selectSystem(frame)
+	world:typeInto(world:fineTuneBox("Size"), "87.5")
+	world:resetToDefaultPosition(frame)
+	-- When
+	world:revertSystem(frame, { anchorInfo = pin })
+	-- Then
+	A.near(frame:GetScale(), 0.875)
+end)
+
+test("given_a_game_rule_forcing_the_party_frame_scale_when_the_party_frame_is_selected_then_size_has_no_box", function()
+	-- Given
+	local world = wow.new()
+	world:loadAddon()
+	world.gameRules[world.Enum.GameRule.ForcedPartyFrameScale] = true
+	local party = world:addSystemFrame(wow.frames.party())
+	-- When
+	world:selectSystem(party)
+	-- Then
+	A.isNil(world:fineTuneBox("FrameSize"))
+	A.truthy(world:fineTuneBox("Opacity"))
+	local free = setup(wow.frames.party())
+	A.truthy(free:fineTuneBox("FrameSize"), "without the rule")
+end)
+
+test("given_a_typed_value_when_the_slider_moves_then_the_box_shows_blizzards_value", function()
+	-- Given
+	local world = setup()
+	local box = world:fineTuneBox("FrameSize")
+	world:typeInto(box, "87.5")
+	-- When
+	world:moveSlider("FrameSize", 120)
+	-- Then
+	A.eq(world:fineTuneBox("FrameSize"):GetText(), "120")
+	A.truthy(world:fineTuneBox("FrameSize") == box, "the dragged slider keeps its frame and box")
+end)
+
+test("given_a_typed_value_when_the_dialog_reverts_the_frame_to_another_step_then_blizzards_value_applies", function()
+	-- Given
+	local world, frame = setup()
+	world:typeInto(world:fineTuneBox("FrameSize"), "87.5")
+	-- When
+	world:revertSystem(frame, { settings = { FrameSize = 120 } })
+	-- Then
+	A.near(frame:GetScale(), 1.2)
+	A.eq(world:fineTuneBox("FrameSize"):GetText(), "120")
+end)
 
 test("given_a_box_when_hovered_then_the_tooltip_explains_typing_and_the_slider", function()
 	-- Given

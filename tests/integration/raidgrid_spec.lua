@@ -12,6 +12,7 @@ local function setup(opts)
 	world:loadAddon()
 	world:setRaidRoster(FULL)
 	world:selectSystem(world.container)
+	world:nextFrame() -- Blizzard's next-frame container size refresh
 	return world
 end
 
@@ -143,9 +144,13 @@ test("given_a_group_with_no_members_when_the_grid_is_placed_then_other_groups_ke
 	local x4, y4 = world:groupOffset(4)
 	-- When
 	world:setRaidRoster({ 5, 5, 0, 5, 5, 5, 5, 5 })
-	-- Then
+	-- Then: Blizzard drops the empty group from the flow and hides it; its cell stays empty
 	A.eq({ world:groupOffset(4) }, { x4, y4 })
-	A.eq(world:raidGrid(), "1 2 3 4 / 5 6 7 8")
+	A.eq(world:raidGrid(), "1 2 . 4 / 5 6 7 8")
+	A.falsy(world.groups[3]:IsShown(), "group 3 hidden")
+	for _, object in ipairs(world.container.flowFrames) do
+		A.truthy(object ~= world.groups[3], "group 3 is not in the flow")
+	end
 end)
 
 test("given_groups_that_never_existed_when_the_grid_is_placed_then_their_cells_stay_empty", function()
@@ -188,10 +193,19 @@ test("given_combined_groups_mode_when_the_grid_is_enabled_then_nothing_is_rearra
 	local world = setup()
 	toggle(world)
 	-- When
+	local moves = 0
+	for i = 1, 8 do
+		moves = moves + world:calls(world.groups[i], "SetPoint")
+	end
 	world:setRaidGroupMode("flush")
 	world:selectSystem(world.container)
-	-- Then
-	A.eq(world:raidGrid(), BLIZZARD_LINE)
+	-- Then: Blizzard lays out players, not groups, and TinyTweaks moves nothing
+	A.eq(world:raidGrid(), "", "no group is shown")
+	local after = 0
+	for i = 1, 8 do
+		after = after + world:calls(world.groups[i], "SetPoint")
+	end
+	A.eq(after, moves, "no group moved")
 	A.falsy(world:findKind(panel(world), "CheckButton"):IsEnabled(), "checkbox disabled")
 	A.eq(note(world), "Only applies when Groups is set to Separate.")
 end)
@@ -322,4 +336,44 @@ test("given_the_addon_loads_before_blizzards_raid_frames_when_they_load_later_th
 	toggle(world)
 	-- Then
 	A.eq(world:raidGrid(), "1 2 3 4 / 5 6 7 8")
+end)
+
+test("given_wider_taller_bordered_members_when_the_grid_is_placed_then_cells_use_blizzards_group_size", function()
+	-- Given
+	local world = setup()
+	world:resizeRaidMembers(80, 40, true)
+	world:raidLayout()
+	world:nextFrame()
+	-- When
+	toggle(world)
+	-- Then: width 80 + 8 border, height 14 + 5 * 40 + 2 border
+	A.eq({ world:groupOffset(2) }, { 88, 0 })
+	A.eq({ world:groupOffset(5) }, { 0, -(14 + 5 * 40 + 2) })
+end)
+
+test("given_a_grid_when_blizzard_refreshes_the_container_size_next_frame_then_it_fits_the_grid", function()
+	-- Given
+	local world = setup()
+	toggle(world)
+	-- When
+	world:raidLayout()
+	world:nextFrame()
+	-- Then
+	A.eq(world:raidGrid(), "1 2 3 4 / 5 6 7 8")
+	A.eq({ world.container:GetSize() }, { 4 * 72, 2 * GROUP_HEIGHT })
+end)
+
+test("given_a_grid_when_groups_resize_after_blizzards_re_flow_then_the_grid_is_re_applied_once_next_frame", function()
+	-- Given
+	local world = setup()
+	toggle(world)
+	local placements = world:calls(world.groups[5], "SetPoint")
+	-- When: every group drops to 3 members, and the groups re-lay out after the container did
+	world:setRaidRoster({ 3, 3, 3, 3, 3, 3, 3, 3 }, { groupsAfter = true })
+	A.eq({ world:groupOffset(5) }, { 0, -GROUP_HEIGHT }, "placed at the old size first")
+	world:nextFrame()
+	-- Then
+	A.eq({ world:groupOffset(5) }, { 0, -(14 + 3 * 36) })
+	A.eq(world:calls(world.groups[5], "SetPoint") - placements, 3, "Blizzard's flow, the grid, one re-apply")
+	A.eq(world:nextFrame(), 0, "settled")
 end)

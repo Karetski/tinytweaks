@@ -291,3 +291,45 @@ test("given_an_offset_when_blizzard_re_anchors_a_protected_frame_in_combat_then_
 	-- Then
 	A.eq({ offset(frame) }, { 0, -220 })
 end)
+
+test("given_an_offset_when_the_frame_is_nudged_with_the_arrow_keys_then_it_is_pinned_freely_and_the_offset_resets", function()
+	-- Given
+	local world, frame = setup()
+	world:selectSystem(frame)
+	world:typeInto(select(2, row(world, "Y Offset")), "-220")
+	-- When
+	world:nudgeSystem(frame, 1, 0)
+	world:selectSystem(frame)
+	-- Then
+	A.eq(pinText(world), "Nothing (placed freely)")
+	A.eq(frame.systemInfo.anchorInfo.point, "TOPLEFT")
+	A.eq(frame.systemInfo.anchorInfo.relativeTo, "UIParent")
+	A.eq(record(world, frame).y, 0)
+end)
+
+test("given_an_offset_when_typing_a_size_then_the_frame_stays_at_pin_plus_offset_on_screen", function()
+	-- Given
+	local world, frame = setup()
+	world:selectSystem(frame)
+	world:typeInto(select(2, row(world, "Y Offset")), "-220")
+	-- When
+	world:typeInto(world:fineTuneBox("FrameSize"), "87.5")
+	-- Then
+	local _, _, _, x, y = frame:GetPoint(1)
+	A.near(x * frame:GetScale(), 0)
+	A.near(y * frame:GetScale(), -220)
+end)
+
+test("given_an_offset_when_blizzard_reapplies_the_layout_at_a_new_size_then_the_frame_stays_at_pin_plus_offset", function()
+	-- Given
+	local world, frame = setup()
+	world:selectSystem(frame)
+	world:typeInto(select(2, row(world, "Y Offset")), "-220")
+	-- When
+	world:applyLayoutData({ [frame] = { settings = { FrameSize = 150 } } })
+	-- Then
+	A.near(frame:GetScale(), 1.5)
+	local _, _, _, x, y = frame:GetPoint(1)
+	A.near(x * frame:GetScale(), 0)
+	A.near(y * frame:GetScale(), -220)
+end)

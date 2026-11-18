@@ -24,13 +24,25 @@ cause, the rule it violates, the fix in place. Add one entry per newly discovere
 - **Fix:** panels are parented to `UIParent`, anchored to the dialog, and shown or hidden
   from `OnShow`/`OnHide` hooks.
 
-## Blizzard's `SetPoint` override on system frames
+## Blizzard's `SetScale`, `SetPoint` and `ClearAllPoints` overrides on system frames
 
-- **Symptom:** moving a system frame from the addon triggers Edit Mode bookkeeping.
-- **Root cause:** Edit Mode system frames override `SetPoint`; the override is Blizzard
-  code.
-- **Rule:** never run Blizzard code from addon code.
-- **Fix:** `local setPoint = frame.SetPointBase or frame.SetPoint`.
+- **Symptom:** Edit Mode taint after typing a size or moving a frame from the addon, possibly in
+  unrelated frames. Blizzard code running as TinyTweaks records snaps and marks Edit Mode's
+  anchors dirty. For a managed frame in its default position it also re-runs
+  `ManageFramePositions`.
+- **Root cause:** every Edit Mode system frame replaces `SetScale`, `SetPoint` and
+  `ClearAllPoints` with Blizzard Lua (`SetScaleOverride`, `SetPointOverride`,
+  `ClearAllPointsOverride`) and keeps the widget methods as `SetScaleBase`, `SetPointBase` and
+  `ClearAllPointsBase`. Calling `frame:SetScale(…)` on a system frame therefore runs Blizzard code
+  from addon code. The scale override also moves the frame's points to keep it in place, so a
+  plain widget `SetScale` without that compensation makes the frame drift.
+- **Rule:** on a system frame, call only the `*Base` methods, and repeat whatever part of the
+  override matters. If the override does something addon code can't repeat, such as re-running
+  a managed container's layout, don't support that case.
+- **Fix in place:** `SetScaleKeepingPosition` in `EditModeFineTune.lua` calls `SetScaleBase`,
+  then scales each point's offsets by old/new through `SetPointBase`. It skips managed frames in
+  their default position. `ApplyOffset` in `EditModePosition.lua` moves frames with
+  `SetPointBase`. The emulator flags an addon call to any of the three overrides.
 
 ## Writing Blizzard settings tables
 
