@@ -54,7 +54,9 @@ convenient ones, and the unsafe ones are refused mechanically:
   function or script.
 - Read Blizzard state; never write fields into Blizzard frames or tables.
 - Never call a Blizzard function that changes Edit Mode state. Re-do only the *widget*
-  call Blizzard's handler makes (`SetScale`, `SetAlpha`, `SetPoint` via `SetPointBase`).
+  call Blizzard's handler makes, through the original widget methods: `SetAlpha`, and on
+  system frames `SetScaleBase`, `SetPointBase` and `ClearAllPointsBase`. Blizzard replaces
+  `SetScale`, `SetPoint` and `ClearAllPoints` on system frames with Lua overrides.
 - TinyTweaks frames are parented to `UIParent` and anchored to Blizzard frames, never
   parented into Blizzard layout frames.
 - Protected frames are never touched in combat; work is deferred to
@@ -318,7 +320,11 @@ made; change an entry only by superseding it.
   `/reload`.
 - **D4. Fine-tune only sliders whose Blizzard handler is a single `SetScale`/`SetAlpha`.**
   Sliders that feed Blizzard layout math (action bar size, raid frame size, minimap…)
-  are excluded. *Why:* only these can be re-applied with the same widget call (D3).
+  are excluded. Scale is applied with `SetScaleBase` plus the offset compensation that
+  Blizzard's `SetScaleOverride` does, because the override itself is Lua that writes Edit
+  Mode state. Managed frames in their default position are excluded, because their scale
+  change needs `ManageFramePositions`. *Why:* only these can be re-applied with widget calls
+  (D3).
 - **D5. Storage is keyed per Edit Mode layout; character layouts include character and
   realm.** *Why:* different characters can have character layouts with the same name.
 - **D6. Tests run on a zero-dependency Lua runner and an in-repo client emulator.** Not

@@ -12,6 +12,7 @@ Edit Mode sliders only move in fixed steps. TinyTweaks adds an input box to some
 
 Only sliders that TinyTweaks can apply on its own get a box, so Blizzard's Edit Mode code never runs from the addon. Sliders whose value feeds into Blizzard's layouts (action bar icon size and padding, raid frame width and height, minimap, chat, objective tracker and others) don't get one.
 
+- Frames that Blizzard lines up automatically while they are in their default position (Durability, Vehicle Seat, Archaeology Bar, Swing Timer, Cast Bar, Boss frames) get a size box once you drag them somewhere else. The Party frame gets none while the game forces its scale.
 - TinyTweaks stores the typed value per layout. Blizzard's layout keeps the slider's value, so without TinyTweaks the frame uses the slider value.
 - Moving the slider again replaces the typed value.
 

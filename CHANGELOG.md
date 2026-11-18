@@ -5,6 +5,11 @@ player can notice; development tooling and refactors don't belong here.
 
 ## Unreleased
 
+- Typed sizes no longer run Blizzard's Edit Mode code, which could taint Edit Mode. Frames keep
+  their position on screen when you type a size.
+- Frames that Blizzard lines up automatically get a size box only after you move them out of
+  their default position, and the Party frame gets none while the game forces its scale.
+
 ## 0.1.0
 
 - Finer Edit Mode values: type exact size, scale or opacity values into supported Edit

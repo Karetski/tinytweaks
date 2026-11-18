@@ -26,6 +26,7 @@ globals = {
 read_globals = {
 	-- WoW API and Blizzard UI
 	"C_AddOns",
+	"C_GameRules",
 	"C_Timer",
 	"CompactRaidFrameContainer",
 	"CopyTable",

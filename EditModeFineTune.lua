@@ -2,13 +2,18 @@
 	Edit Mode fine-tuning: type an exact value into some Edit Mode sliders.
 
 	Only sliders whose Blizzard handler is a single SetScale or SetAlpha on the frame are supported.
-	Those can be repeated with the same widget call, so Blizzard code never has to run from here.
+	Those can be repeated with widget calls, so Blizzard code never has to run from here.
 
 	  * The typed value is stored in TinyTweaksDB per layout/system/setting, together with the raw
 	    slider step it was typed against. Blizzard's layout keeps the slider's own value, so without
 	    this addon the frame simply uses the slider value.
 	  * After Blizzard's own UpdateSystemSetting<Name> runs (hooksecurefunc), the typed value is
-	    applied with SetScale/SetAlpha.
+	    applied. Alpha is a plain SetAlpha. Scale is not: Blizzard replaces SetScale on system frames
+	    with SetScaleOverride (Lua), so the module calls the original SetScaleBase and repeats the
+	    override's offset compensation with SetPointBase, keeping the frame in place.
+	  * Managed frames in their default position (laid out by Blizzard's managed-frame containers)
+	    get no typed scale: Blizzard re-runs the container layout on a scale change, which addon code
+	    can't do.
 	  * A typed value is only used while the Blizzard raw value still matches. Moving the slider, reverting,
 	    or resetting the layout makes it inactive, and moving the slider deletes it.
 
@@ -46,6 +51,12 @@ local function BuildSupported()
 	local function unitFrameSize(frame)
 		-- Player: Blizzard also rescales the pet frame and the cast bar. Pet: scaled with the player.
 		if frame.systemIndex == indices.Player or frame.systemIndex == indices.Pet then
+			return false
+		end
+		-- Party: Blizzard ignores the slider while a game rule forces the party frame scale.
+		local rule = Enum.GameRule and Enum.GameRule.ForcedPartyFrameScale
+		if frame.systemIndex == indices.Party and rule and C_GameRules and C_GameRules.IsGameRuleActive
+			and C_GameRules.IsGameRuleActive(rule) then
 			return false
 		end
 		local larger = unitSetting.UseLargerFrame
@@ -139,6 +150,37 @@ local function GetActiveOverride(frame, setting)
 	return override.value
 end
 
+-- Whether the typed value can be applied to this frame right now.
+local function CanApply(frame, spec)
+	if spec.check and not spec.check(frame) then
+		return false
+	end
+	-- In its default position a managed frame is laid out by its container, and Blizzard's scale
+	-- change re-runs that layout (ManageFramePositions), which addon code must not call.
+	if spec.kind == "scale" and frame.isManagedFrame and frame.IsInDefaultPosition and frame:IsInDefaultPosition() then
+		return false
+	end
+	return true
+end
+
+-- Blizzard replaces SetScale on system frames with SetScaleOverride, Lua that keeps the frame in
+-- place by re-setting its points through its own SetPoint override, which records snapping and
+-- marks Edit Mode's anchors dirty. Run from here, that code would run tainted. So: the original
+-- widget SetScale, then the same offset compensation with the original widget SetPoint.
+local function SetScaleKeepingPosition(frame, scale)
+	local oldScale = frame:GetScale()
+	local setScale = frame.SetScaleBase or frame.SetScale
+	setScale(frame, scale)
+	if oldScale == scale then
+		return
+	end
+	local setPoint = frame.SetPointBase or frame.SetPoint
+	for i = 1, frame:GetNumPoints() do
+		local point, relativeTo, relativePoint, x, y = frame:GetPoint(i)
+		setPoint(frame, point, relativeTo, relativePoint, x * oldScale / scale, y * oldScale / scale)
+	end
+end
+
 -- Same widget call Blizzard's handler makes, with our value.
 local function ApplyValue(frame, setting, value)
 	local spec = GetSpec(frame, setting)
@@ -149,7 +191,7 @@ local function ApplyValue(frame, setting, value)
 	if (frame.IsInitialized and not frame:IsInitialized()) or not frame:HasSetting(setting) then
 		return
 	end
-	if spec.check and not spec.check(frame) then
+	if not CanApply(frame, spec) then
 		return
 	end
 	if InCombatLockdown() and frame:IsProtected() then
@@ -159,7 +201,7 @@ local function ApplyValue(frame, setting, value)
 	applied[frame] = applied[frame] or {}
 	applied[frame][setting] = true
 	if spec.kind == "scale" then
-		frame:SetScale(value / 100)
+		SetScaleKeepingPosition(frame, value / 100)
 	else
 		frame:SetAlpha(value / 100)
 	end
@@ -183,11 +225,37 @@ end
 
 -- After a layout switch or revert, Blizzard only re-applies settings whose step changed, so a
 -- typed value from before could linger. Put back whatever should be shown now.
-local function RestoreApplied()
-	for frame, settings in pairs(applied) do
-		for setting in pairs(settings) do
-			ApplyValue(frame, setting, GetActiveOverride(frame, setting) or frame:GetSettingValue(setting))
+-- Puts back what should show for each setting we've changed on this frame: the typed value if it's
+-- active and can apply, otherwise Blizzard's value. Blizzard re-applies a setting only when its slider
+-- step changed, so after a layout switch, a revert or a return to the default position a typed value
+-- would otherwise linger.
+local function RestoreFrame(frame)
+	local settings = applied[frame]
+	if not settings then
+		return
+	end
+	for setting in pairs(settings) do
+		local spec = GetSpec(frame, setting)
+		local typed = GetActiveOverride(frame, setting)
+		if spec and CanApply(frame, spec) then
+			ApplyValue(frame, setting, typed or frame:GetSettingValue(setting))
+		elseif spec and spec.kind == "scale" and frame:HasSetting(setting) then
+			-- A managed frame back in its default position: its container places it, so only the
+			-- scale goes back to Blizzard's value. Nothing of ours applies anymore.
+			if InCombatLockdown() and frame:IsProtected() then
+				pendingAfterCombat[frame] = true
+			else
+				local setScale = frame.SetScaleBase or frame.SetScale
+				setScale(frame, frame:GetSettingValue(setting) / 100)
+				settings[setting] = nil
+			end
 		end
+	end
+end
+
+local function RestoreApplied()
+	for frame in pairs(applied) do
+		RestoreFrame(frame)
 	end
 end
 
@@ -206,6 +274,14 @@ local function HookSystemFrame(frame)
 			end)
 		end
 	end
+	-- Re-anchoring can change whether a typed value applies (a managed frame entering or leaving
+	-- its default position) without any setting handler running.
+	if type(frame.ApplySystemAnchor) == "function" then
+		hooksecurefunc(frame, "ApplySystemAnchor", function(self)
+			RestoreFrame(self)
+			ApplyAllOverrides(self)
+		end)
+	end
 end
 
 function M:IsFineTunable(frame, setting)
@@ -214,7 +290,7 @@ function M:IsFineTunable(frame, setting)
 	if not info or info.type ~= Enum.EditModeSettingDisplayType.Slider then
 		return false
 	end
-	return not spec.check or spec.check(frame)
+	return CanApply(frame, spec)
 end
 
 -- Stores and applies a typed value. A value on the slider's own step just clears the override.

@@ -124,3 +124,7 @@ measurement shows it matters.
 - Several hooks call `UpdatePanel` for one user action (backlog item 6).
 - `EditModeFineTune` `RestoreApplied` iterates every frame it has ever applied on each
   `UpdateSystems`; bounded by the number of supported frames, so acceptable.
+- `EditModeFineTune` post-hooks `ApplySystemAnchor` (which runs per frame on each layout update,
+  reset or revert, not per slider step). Each call looks up the frame's typed values, which builds
+  the layout and system key strings, about 0.6 KB per call in the bench. Caching the layout key in
+  `Core` would remove most of it, if measurement ever shows that it matters.

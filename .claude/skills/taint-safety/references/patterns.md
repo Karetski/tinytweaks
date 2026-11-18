@@ -11,7 +11,14 @@ Use when Blizzard's handler for a setting is a single widget call (`SetScale`,
 1. Post-hook the per-setting handler on the system frame:
    `hooksecurefunc(frame, "UpdateSystemSettingSize", fn)`.
 2. In the hook, check the same conditions Blizzard's handler checks (initialized, setting
-   present, mode flags), then make the same widget call with your value.
+   present, mode flags), then make the same widget call with your value. On system frames,
+   `SetScale`, `SetPoint` and `ClearAllPoints` are Blizzard Lua overrides
+   (`SetScaleOverride` re-anchors through `SetPointOverride`, which writes Edit Mode state).
+   Call the originals `SetScaleBase`, `SetPointBase` and `ClearAllPointsBase`, and repeat
+   whatever the override does that matters (`SetScaleKeepingPosition` in
+   `EditModeFineTune.lua` repeats the offset compensation). If the override does something
+   addon code can't repeat, such as re-running `ManageFramePositions` for a managed frame in
+   its default position, don't support that case.
 3. Store, next to the value, the Blizzard raw value it was made against; skip the
    override when the raw value differs (validated overlay, below).
 
