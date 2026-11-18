@@ -1,0 +1,16 @@
+# BigWigsMods/packager configuration (https://github.com/BigWigsMods/packager).
+# `make dist` builds the same file set locally; keep the two in step.
+package-as: TinyTweaks
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+ignore:
+  - CLAUDE.md
+  - Makefile
+  - docs
+  - scripts
+  - tests
+  - tools
+  - dist
