@@ -48,6 +48,23 @@ local function Migrate(cfg)
 	cfg.perLine, cfg.fill, cfg.hDir, cfg.vDir, cfg.rows = nil, nil, nil, nil, nil
 end
 
+-- Brings every stored config up to date: earlier formats migrated, missing keys defaulted.
+-- Idempotent; runs once at load, so reads never have to.
+local function MigrateAll()
+	for _, layout in pairs(ns.db.layouts) do
+		layout.raidGrid = nil -- the earlier member-grid version of this module
+		local cfg = layout.groupGrid
+		if cfg then
+			Migrate(cfg)
+			for k, v in pairs(DEFAULTS) do
+				if cfg[k] == nil then
+					cfg[k] = v
+				end
+			end
+		end
+	end
+end
+
 local function GetConfig(create)
 	local layout = ns:GetLayoutDB(create)
 	if not layout then
@@ -57,14 +74,6 @@ local function GetConfig(create)
 	if not cfg and create then
 		cfg = CopyTable(DEFAULTS)
 		layout.groupGrid = cfg
-	end
-	if cfg then
-		Migrate(cfg)
-		for k, v in pairs(DEFAULTS) do
-			if cfg[k] == nil then
-				cfg[k] = v
-			end
-		end
 	end
 	return cfg or DEFAULTS
 end
@@ -755,10 +764,7 @@ local function HookGroup(group)
 end
 
 function M:Init()
-	-- Settings from the earlier member-grid version of this module.
-	for _, layout in pairs(ns.db.layouts) do
-		layout.raidGrid = nil
-	end
+	MigrateAll()
 
 	ns:WhenLoaded("Blizzard_CompactRaidFrames", function()
 		ns:WhenLoaded("Blizzard_EditMode", function()

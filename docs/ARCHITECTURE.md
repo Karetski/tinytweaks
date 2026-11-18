@@ -161,7 +161,9 @@ contract with every player who has it.*
 SavedVariables outlive the code that wrote them. The schema is documented below. Every
 format change ships with a migration that is idempotent (safe to run twice), pure (a
 function from old table to new table) and covered by a test that starts a world from the
-old saved data.
+old saved data. Migrations run once at load, over every layout, in the module's `Init`;
+reads never migrate. A version number is added the first time a migration can't be made
+idempotent (decision D8).
 
 ### P10. Small changes, each with a test
 
@@ -285,16 +287,12 @@ item is its own commit, done when the area is next touched, with the integration
 green before and after (the suite characterizes current behavior, so these are safe
 refactors).
 
-1. **Saved-data migrations are scattered and unversioned**: `RaidGroupGrid` migrates and
-   fills defaults inside `GetConfig` on every read (a warm path), and two modules prune
-   old keys in `Init`. Add `TinyTweaksDB.version` and run ordered, tested migrations once
-   at load (P9, P6).
-2. **Pure logic is trapped in locals** (`GetCells`, `GetGridSize`, `JoinLabels`,
+1. **Pure logic is trapped in locals** (`GetCells`, `GetGridSize`, `JoinLabels`,
    `DescribeSnapInfo`, value parsing and clamping). It is tested today only through the
    emulator. Expose the compute layer so it gets direct unit tests (P4).
-3. **`SystemKey`, number parsing and the tooltip helper are duplicated** across modules.
+2. **`SystemKey`, number parsing and the tooltip helper are duplicated** across modules.
    Move each into `Core` when a third copy would appear (P3).
-4. **`UpdatePanel` runs several times per selection** (it is hooked on `UpdateSettings`,
+3. **`UpdatePanel` runs several times per selection** (it is hooked on `UpdateSettings`,
    `AttachToSystemFrame`, `OnShow`, `UpdateDialog`, `UpdateRaidContainerFlow`,
    `UpdateSystems`). Coalesce to once per frame if measurement shows a cost (P6).
 
@@ -329,6 +327,10 @@ made; change an entry only by superseding it.
 - **D7. No formatter is enforced yet.** `.editorconfig` pins tabs; adopting StyLua is a
   one-commit reformat to decide separately. *Why:* a formatter that rewrites every file
   is a gestalt change, not a side effect of tooling setup.
+- **D8. No schema version yet.** Every migration so far is idempotent and runs at each
+  load, which costs a pass over the saved layouts and needs no bookkeeping. *Why:* a
+  version number earns its place only when a migration can't safely run twice; add
+  `TinyTweaksDB.version` with that migration.
 
 ## Sources
 

@@ -324,6 +324,28 @@ test("given_settings_from_the_earlier_panel_version_when_loaded_then_they_are_mi
 	A.isNil(world:saved().layouts["1:Main"].raidGrid)
 end)
 
+test("given_earlier_settings_in_a_layout_that_is_not_active_when_loaded_then_they_are_migrated_at_load", function()
+	-- Given
+	local old = { enabled = true, perLine = 2, fill = "rows", vDir = "down", hDir = "right" }
+	local saved = { layouts = { ["1:Other"] = { groupGrid = old } } }
+	local world = wow.new({ saved = { TinyTweaksDB = saved } })
+	-- When
+	world:loadAddon()
+	-- Then
+	A.eq(world:saved().layouts["1:Other"].groupGrid,
+		{ enabled = true, columns = 2, order = "across", corner = "TOPLEFT", hSpacing = 0, vSpacing = 0 })
+end)
+
+test("given_migrated_settings_when_loaded_again_then_they_are_unchanged", function()
+	-- Given
+	local current = { enabled = true, columns = 3, order = "down", corner = "TOPRIGHT", hSpacing = 4, vSpacing = 2 }
+	local world = wow.new({ saved = { TinyTweaksDB = { layouts = { ["1:Main"] = { groupGrid = wow.deepcopy(current) } } } } })
+	-- When
+	world:loadAddon()
+	-- Then
+	A.eq(world:saved().layouts["1:Main"].groupGrid, current)
+end)
+
 test("given_the_addon_loads_before_blizzards_raid_frames_when_they_load_later_then_the_grid_still_works", function()
 	-- Given
 	local world = wow.new()

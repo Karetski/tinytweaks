@@ -116,12 +116,9 @@ Ierusalimschy, "Lua Performance Tips" (*Lua Programming Gems*).
 Observed by reading the code; none measured in game yet. Each is a candidate only if
 measurement shows it matters.
 
-- `RaidGroupGrid` `GetConfig` runs the settings migration and fills defaults on every
-  call, and `IsActive` (called from T2 hooks) calls it. Moving migration to load time is
-  backlog item 3 in ARCHITECTURE.md.
 - `RaidGroupGrid` builds group-size strings (`w .. "x" .. h`) to detect size changes, and
   builds a cell table plus closures per reflow.
-- Several hooks call `UpdatePanel` for one user action (backlog item 6).
+- Several hooks call `UpdatePanel` for one user action (backlog item 3 in ARCHITECTURE.md).
 - `EditModeFineTune` `RestoreApplied` iterates every frame it has ever applied on each
   `UpdateSystems`; bounded by the number of supported frames, so acceptable.
 - `EditModeFineTune` post-hooks `ApplySystemAnchor` (which runs per frame on each layout update,
