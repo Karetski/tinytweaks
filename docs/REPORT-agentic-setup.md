@@ -87,16 +87,41 @@ Phrases often attributed to Lattner that I couldn't source as his ("pay for what
 - **Profiler caveat:** `C_AddOnProfiler` doesn't attribute time spent in post-hooks on Blizzard functions, so it can show TinyTweaks near zero even when its hooks are expensive.
 - **Known costs:** the doc lists the costs I found by reading the code. None has been measured in game yet.
 
+## Checked against Blizzard's source
+
+The simulated client's assumptions were checked against Blizzard's UI source for this
+client: the `forever` branch of Gethe/wow-ui-source, build 1.60.1 (70959). That is the same
+build as the installed client, but a public copy, not an export from your install. The model
+in `tests/support/wow.lua` now cites `file:line` for each behavior.
+
+- **Real taint bug, fixed.** On Edit Mode system frames, Blizzard replaces `SetScale`,
+  `SetPoint` and `ClearAllPoints` with Lua overrides. Typing a size called the
+  `SetScale` override, which ran Blizzard's Edit Mode code tainted. Fine-tune now uses
+  `SetScaleBase` and repeats the override's offset compensation through `SetPointBase`.
+  A regression test fails against the old code.
+- **Behavior change that comes with it:** frames Blizzard lines up automatically get a size
+  box only once moved out of their default position. These are Durability, Vehicle Seat,
+  Archaeology Bar, Swing Timer, Cast Bar and the Boss frames. The Party frame gets none
+  while the game forces its scale. A typed size gives way to Blizzard's when such a frame
+  returns to its default position, also in combat.
+- **Not bugs:** frames don't drift when you type a size, and the typed-value box refreshes
+  when you move the slider.
+- **Model corrections:** the raid container, slider and drag flows, and the full list of
+  calls blocked in combat now follow Blizzard's code.
+
 ## Findings to check in game
 
-1. **Typing a size may move an offset frame.** Typing a size on a frame pinned with a non-zero offset may shift it on screen. It is the skipped test `given_a_frame_pinned_off_center_when_typing_a_size_then_it_stays_at_its_pin_on_screen`.
-2. **The fine-tune box may show a stale value** after you move the slider, if Blizzard doesn't refresh the dialog.
-3. **Midnight "secret anchors"** could break the arithmetic in the position module on this client. It is recorded in `taint-safety/references/hazards.md` and not yet observed.
-4. **Unchecked simulator assumptions:** the 11 listed in the header of `tests/support/wow.lua` need checking against Blizzard's real code.
+1. **Midnight "secret anchors"** could break the arithmetic in the position module on this
+   client. It is recorded in `taint-safety/references/hazards.md` and not yet observed.
+2. **Stale container spacing.** When a managed frame with a typed size returns to its
+   default position, its container lays out before TinyTweaks restores Blizzard's size. The
+   spacing may stay off until Blizzard next lays the container out.
+3. **Everything above:** the source check confirms the model, not the client. One pass of
+   `/ingame-verify` over typed sizes, offsets and the raid grid closes that gap.
 
 ## Open items
 
-- **Export Blizzard's UI source** so `blizzard-source` has the authoritative copy:
+- **Export Blizzard's UI source** from your install, to confirm the public copy matches:
   1. Add the `-console` launch argument.
   2. On the login screen, press the backtick key.
   3. Run `ExportInterfaceFiles code`.
