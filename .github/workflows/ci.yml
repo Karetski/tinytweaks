@@ -8,7 +8,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: leafo/gh-actions-lua@v13.1.0
         with:
           luaVersion: "5.1"
@@ -23,7 +23,7 @@ jobs:
       matrix:
         lua: ["5.1", "luajit-2.1"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: leafo/gh-actions-lua@v13.1.0
         with:
           luaVersion: ${{ matrix.lua }}
@@ -32,7 +32,7 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: leafo/gh-actions-lua@v13.1.0
         with:
           luaVersion: "luajit-2.1"
