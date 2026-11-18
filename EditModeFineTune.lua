@@ -1,16 +1,21 @@
 --[[
-	Edit Mode fine-tuning: type any value into Edit Mode sliders.
+	Edit Mode fine-tuning: type an exact value into some Edit Mode sliders.
 
-	Blizzard stores each slider as a step index (e.g. action bar icon size 50-200% in 10% steps),
-	so finer values can't live in the Blizzard layout. Instead:
-	  * The Blizzard layout keeps the nearest step (so the layout still looks right without this addon).
-	  * The exact value is stored in TinyTweaksDB per layout/system/setting, together with the raw
-	    step it was made against.
-	  * After Blizzard builds a system's settingMap, the override replaces displayValue. That's the value
-	    every Blizzard UpdateSystemSetting* function reads via GetSettingValue, so Blizzard's own code
-	    applies it.
-	  * An override is only used while the Blizzard raw value still matches. Moving the slider, reverting,
+	Only sliders whose Blizzard handler is a single SetScale or SetAlpha on the frame are supported.
+	Those can be repeated with the same widget call, so Blizzard code never has to run from here.
+
+	  * The typed value is stored in TinyTweaksDB per layout/system/setting, together with the raw
+	    slider step it was typed against. Blizzard's layout keeps the slider's own value, so without
+	    this addon the frame simply uses the slider value.
+	  * After Blizzard's own UpdateSystemSetting<Name> runs (hooksecurefunc), the typed value is
+	    applied with SetScale/SetAlpha.
+	  * A typed value is only used while the Blizzard raw value still matches. Moving the slider, reverting,
 	    or resetting the layout makes it inactive, and moving the slider deletes it.
+
+	Taint notes: this module never calls Blizzard Edit Mode functions that change state, never writes
+	into Blizzard tables (settingMap, dirtySettings) and never sets fields on Blizzard frames. Running
+	Blizzard's setting code from addon code taints the settings dialog, after which unit frame code fails
+	on secret values ("execution tainted by TinyTweaks") until /reload.
 ]]
 
 local _, ns = ...
@@ -18,26 +23,67 @@ local _, ns = ...
 local M = {}
 table.insert(ns.modules, M)
 
--- Slider settings that are counts (rows, icons, limits). Fractional values make no sense there.
-local excluded
+-- Supported sliders: supported[system][setting] = { kind = "scale"|"alpha", method = <Blizzard apply method>, check = fn }
+local supported
 
-local function BuildExcluded()
-	local ex = {}
-	local function add(systemKey, enumName, settingKey)
+local function BuildSupported()
+	local list = {}
+	local function add(systemKey, enumName, settingKey, kind, method, check)
 		local system = Enum.EditModeSystem[systemKey]
 		local settingEnum = Enum[enumName]
-		if system and settingEnum and settingEnum[settingKey] ~= nil then
-			ex[system] = ex[system] or {}
-			ex[system][settingEnum[settingKey]] = true
+		local setting = settingEnum and settingEnum[settingKey]
+		if system and setting ~= nil then
+			list[system] = list[system] or {}
+			list[system][setting] = { kind = kind, method = method, check = check }
 		end
 	end
-	add("ActionBar", "EditModeActionBarSetting", "NumRows")
-	add("ActionBar", "EditModeActionBarSetting", "NumIcons")
-	add("UnitFrame", "EditModeUnitFrameSetting", "RowSize")
-	add("AuraFrame", "EditModeAuraFrameSetting", "IconLimitBuffFrame")
-	add("AuraFrame", "EditModeAuraFrameSetting", "IconLimitDebuffFrame")
-	add("CooldownViewer", "EditModeCooldownViewerSetting", "IconLimit")
-	return ex
+
+	local indices = Enum.EditModeUnitFrameSystemIndices or {}
+	local unitSetting = Enum.EditModeUnitFrameSetting or {}
+	local castBarSetting = Enum.EditModeCastBarSetting or {}
+
+	-- Same conditions under which Blizzard's own handler applies the value.
+	local function unitFrameSize(frame)
+		-- Player: Blizzard also rescales the pet frame and the cast bar. Pet: scaled with the player.
+		if frame.systemIndex == indices.Player or frame.systemIndex == indices.Pet then
+			return false
+		end
+		local larger = unitSetting.UseLargerFrame
+		if larger and frame:HasSetting(larger) and not frame:GetSettingValueBool(larger) then
+			return false
+		end
+		return true
+	end
+	local function unitFrameOpacity(frame)
+		return frame:ShouldShowSetting(unitSetting.Opacity)
+	end
+	local function castBarSize(frame)
+		-- Locked to the player frame, Blizzard counteracts the player frame's scale and re-anchors.
+		local locked = castBarSetting.LockToPlayerFrame
+		return not (locked and frame:HasSetting(locked) and frame:GetSettingValueBool(locked))
+	end
+
+	add("Bags", "EditModeBagsSetting", "Size", "scale", "UpdateSystemSettingSize")
+	add("DurabilityFrame", "EditModeDurabilityFrameSetting", "Size", "scale", "UpdateSystemSettingSize")
+	add("TimerBars", "EditModeTimerBarsSetting", "Size", "scale", "UpdateSystemSettingSize")
+	add("VehicleSeatIndicator", "EditModeVehicleSeatIndicatorSetting", "Size", "scale", "UpdateSystemSettingSize")
+	add("ArchaeologyBar", "EditModeArchaeologyBarSetting", "Size", "scale", "UpdateSystemSettingSize")
+	add("GroupFinder", "EditModeGroupFinderSetting", "Size", "scale", "UpdateSystemSettingSize")
+	add("LossOfControl", "EditModeLossOfControlSetting", "Size", "scale", "UpdateSystemSettingSize")
+	add("SwingTimer", "EditModeSwingTimerSetting", "Scale", "scale", "UpdateSystemSettingScale")
+	add("SwingTimer", "EditModeSwingTimerSetting", "Opacity", "alpha", "UpdateSystemSettingOpacity")
+	add("CastBar", "EditModeCastBarSetting", "BarSize", "scale", "UpdateSystemSettingBarSize", castBarSize)
+	add("UnitFrame", "EditModeUnitFrameSetting", "FrameSize", "scale", "UpdateSystemSettingFrameSize", unitFrameSize)
+	add("UnitFrame", "EditModeUnitFrameSetting", "Opacity", "alpha", "UpdateSystemSettingOpacity", unitFrameOpacity)
+	add("AuraFrame", "EditModeAuraFrameSetting", "Opacity", "alpha", "UpdateSystemSettingOpacity")
+	add("CooldownViewer", "EditModeCooldownViewerSetting", "Opacity", "alpha", "UpdateSystemSettingOpacity")
+	add("PersonalResourceDisplay", "EditModePersonalResourceDisplaySetting", "Opacity", "alpha", "UpdateSystemSettingOpacity")
+	return list
+end
+
+local function GetSpec(frame, setting)
+	local system = supported and frame and supported[frame.system]
+	return system and system[setting]
 end
 
 local function SystemKey(frame)
@@ -74,30 +120,73 @@ local function FormatValue(value)
 	return (string.format("%.2f", value):gsub("0+$", ""):gsub("%.$", ""))
 end
 
--- Writes active overrides into a freshly built settingMap. When oldMap is given (layout switch /
--- full system update), settings whose effective value changed are marked dirty so Blizzard re-applies them.
-local function ApplyOverrides(frame, oldMap)
-	local map = frame.settingMap
-	if not map then
+-- Applying -------------------------------------------------------------------------
+
+local pendingAfterCombat = {} -- frame -> true
+local applied = {} -- frame -> { [setting] = true }: settings we've changed with a typed value
+
+-- Returns the typed value for this setting if it's still valid (the slider hasn't moved since).
+local function GetActiveOverride(frame, setting)
+	local overrides = GetOverrides(frame, false)
+	local override = overrides and overrides[setting]
+	if not override then
+		return nil
+	end
+	local useRawValue = true
+	if frame:GetSettingValue(setting, useRawValue) ~= override.raw then
+		return nil
+	end
+	return override.value
+end
+
+-- Same widget call Blizzard's handler makes, with our value.
+local function ApplyValue(frame, setting, value)
+	local spec = GetSpec(frame, setting)
+	if not spec or not value or (spec.kind == "scale" and value <= 0) then
 		return
 	end
+	-- GetSettingValue returns 0 for frames that aren't set up yet.
+	if (frame.IsInitialized and not frame:IsInitialized()) or not frame:HasSetting(setting) then
+		return
+	end
+	if spec.check and not spec.check(frame) then
+		return
+	end
+	if InCombatLockdown() and frame:IsProtected() then
+		pendingAfterCombat[frame] = true
+		return
+	end
+	applied[frame] = applied[frame] or {}
+	applied[frame][setting] = true
+	if spec.kind == "scale" then
+		frame:SetScale(value / 100)
+	else
+		frame:SetAlpha(value / 100)
+	end
+end
 
-	local overrides = GetOverrides(frame, false)
-	if overrides then
-		for setting, override in pairs(overrides) do
-			local entry = map[setting]
-			if entry and entry.value == override.raw then
-				entry.displayValue = override.value
-			end
+local function ApplyOverride(frame, setting)
+	local value = GetActiveOverride(frame, setting)
+	if value then
+		ApplyValue(frame, setting, value)
+	end
+end
+
+local function ApplyAllOverrides(frame)
+	local system = supported and supported[frame.system]
+	if system then
+		for setting in pairs(system) do
+			ApplyOverride(frame, setting)
 		end
 	end
+end
 
-	if oldMap and frame.dirtySettings then
-		for setting, entry in pairs(map) do
-			local old = oldMap[setting]
-			if old and old.displayValue ~= entry.displayValue then
-				frame.dirtySettings[setting] = true
-			end
+-- After a layout switch or revert, Blizzard only re-applies settings whose step changed, so a
+-- typed value from before could linger. Put back whatever should be shown now.
+local function RestoreApplied()
+	for frame, settings in pairs(applied) do
+		for setting in pairs(settings) do
+			ApplyValue(frame, setting, GetActiveOverride(frame, setting) or frame:GetSettingValue(setting))
 		end
 	end
 end
@@ -105,68 +194,57 @@ end
 local hookedFrames = {}
 
 local function HookSystemFrame(frame)
-	if hookedFrames[frame] or type(frame.UpdateSettingMap) ~= "function" then
+	local system = supported and supported[frame.system]
+	if not system or hookedFrames[frame] then
 		return
 	end
 	hookedFrames[frame] = true
-	hooksecurefunc(frame, "UpdateSettingMap", function(self)
-		ApplyOverrides(self)
-	end)
-	if type(frame.UpdateDirtySettings) == "function" then
-		hooksecurefunc(frame, "UpdateDirtySettings", ApplyOverrides)
+	for setting, spec in pairs(system) do
+		if type(frame[spec.method]) == "function" then
+			hooksecurefunc(frame, spec.method, function(self)
+				ApplyOverride(self, setting)
+			end)
+		end
 	end
 end
 
 function M:IsFineTunable(frame, setting)
-	local info = frame and frame.settingDisplayInfoMap and frame.settingDisplayInfoMap[setting]
+	local spec = GetSpec(frame, setting)
+	local info = spec and frame.settingDisplayInfoMap and frame.settingDisplayInfoMap[setting]
 	if not info or info.type ~= Enum.EditModeSettingDisplayType.Slider then
 		return false
 	end
-	if info.isCompositeNumberSetting or info.hideValue then
-		return false
-	end
-	local ex = excluded and excluded[frame.system]
-	return not (ex and ex[setting])
+	return not spec.check or spec.check(frame)
 end
 
-function M:ClearOverride(frame, setting)
-	local overrides = frame and GetOverrides(frame, false)
-	if overrides then
-		overrides[setting] = nil
-	end
-end
-
+-- Stores and applies a typed value. A value on the slider's own step just clears the override.
 function M:SetValue(frame, setting, value)
-	local info = frame.settingDisplayInfoMap[setting]
-	local step = info.stepSize or 1
-	local minValue, maxValue = info.minValue, info.maxValue
-
-	-- Nearest value the Blizzard slider can represent; that's what goes into the Blizzard layout.
-	local stepped = minValue + math.floor((value - minValue) / step + 0.5) * step
-	stepped = math.min(maxValue, math.max(minValue, stepped))
-	local raw = frame:ConvertSettingDisplayValueToRawValue(setting, stepped)
-
-	if value == stepped then
-		self:ClearOverride(frame, setting)
+	local current = frame:GetSettingValue(setting)
+	if value == current then
+		local overrides = GetOverrides(frame, false)
+		if overrides then
+			overrides[setting] = nil
+		end
 	else
-		GetOverrides(frame, true)[setting] = { value = value, raw = raw }
+		local useRawValue = true
+		GetOverrides(frame, true)[setting] = { value = value, raw = frame:GetSettingValue(setting, useRawValue) }
 	end
+	ApplyValue(frame, setting, value)
+end
 
-	local useRawValue = true
-	if frame:GetSettingValue(setting, useRawValue) ~= raw then
-		-- Same path the slider uses; marks the layout as changed so Save works as usual.
-		EditModeManagerFrame:OnSystemSettingChange(frame, setting, stepped)
-	else
-		-- Raw step unchanged, so force Blizzard to re-apply this setting with the new display value.
-		frame:UpdateSystemSetting(setting)
-	end
+-- Value shown in the input box: the typed value if active, otherwise the slider's.
+local function GetShownValue(frame, setting)
+	return GetActiveOverride(frame, setting) or frame:GetSettingValue(setting)
 end
 
 -- Slider input boxes ---------------------------------------------------------
+-- Kept in a local table, not as fields on Blizzard's pooled slider frames.
+
+local inputs = setmetatable({}, { __mode = "k" }) -- slider frame -> box
 
 local function RefreshInput(box)
 	if box.systemFrame and box.setting then
-		box:SetText(FormatValue(box.systemFrame:GetSettingValue(box.setting)))
+		box:SetText(FormatValue(GetShownValue(box.systemFrame, box.setting)))
 		box:SetCursorPosition(0)
 	end
 end
@@ -176,7 +254,7 @@ local function CommitInput(box)
 	if not frame or not setting then
 		return
 	end
-	if InCombatLockdown() then
+	if InCombatLockdown() and frame:IsProtected() then
 		UIErrorsFrame:AddMessage(ERR_NOT_IN_COMBAT, 1, 0.1, 0.1)
 		RefreshInput(box)
 		return
@@ -189,10 +267,13 @@ local function CommitInput(box)
 		return
 	end
 
-	-- Paddings/offsets may go to 0; sizes, scales and opacities stay above 0.
-	local info = frame.settingDisplayInfoMap[setting]
-	local lowerBound = (info.minValue or 0) <= 10 and 0 or 1
-	value = math.max(lowerBound, math.floor(value * 100 + 0.5) / 100)
+	local spec = GetSpec(frame, setting)
+	value = math.floor(value * 100 + 0.5) / 100
+	if spec.kind == "alpha" then
+		value = math.max(0, math.min(100, value))
+	else
+		value = math.max(10, math.min(400, value))
+	end
 
 	M:SetValue(frame, setting, value)
 	RefreshInput(box)
@@ -223,12 +304,12 @@ local function CreateInput(sliderFrame)
 	end)
 	box:SetScript("OnLeave", GameTooltip_Hide)
 
-	sliderFrame.TinyTweaksInput = box
+	inputs[sliderFrame] = box
 	return box
 end
 
 local function DecorateSlider(sliderFrame, systemFrame)
-	local box = sliderFrame.TinyTweaksInput
+	local box = inputs[sliderFrame]
 	local rightText = sliderFrame.Slider and sliderFrame.Slider.RightText
 
 	if not M:IsFineTunable(systemFrame, sliderFrame.setting) then
@@ -268,31 +349,54 @@ local function DecorateDialog(dialog)
 	end
 end
 
+-- Init ---------------------------------------------------------------------------------
+
 function M:Init()
 	ns:WhenLoaded("Blizzard_EditMode", function()
-		excluded = BuildExcluded()
+		supported = BuildSupported()
+
+		-- Typed values from the earlier version for sliders that are no longer supported.
+		for _, layout in pairs(ns.db.layouts) do
+			for key, overrides in pairs(layout.overrides or {}) do
+				local system = supported[tonumber(key:match("^(%-?%d+):"))]
+				for setting in pairs(overrides) do
+					if not (system and system[setting]) then
+						overrides[setting] = nil
+					end
+				end
+				if not next(overrides) then
+					layout.overrides[key] = nil
+				end
+			end
+		end
 
 		for _, frame in ipairs(EditModeManagerFrame.registeredSystemFrames) do
 			HookSystemFrame(frame)
+			ApplyAllOverrides(frame)
 		end
 		hooksecurefunc(EditModeManagerFrame, "RegisterSystemFrame", function(_, frame)
 			HookSystemFrame(frame)
 		end)
 
 		hooksecurefunc(EditModeSystemSettingsDialog, "UpdateSettings", DecorateDialog)
+		hooksecurefunc(EditModeManagerFrame, "UpdateSystems", RestoreApplied)
 
-		-- The user moved a Blizzard control: an override for that setting is no longer wanted.
+		-- The user moved a Blizzard control: the typed value for that setting is no longer wanted.
+		-- Blizzard skips re-applying when the slider lands on the same step, so put its value back
+		-- ourselves (the same widget call its handler makes).
 		hooksecurefunc(EditModeSystemSettingsDialog, "OnSettingValueChanged", function(dialog, setting)
 			local frame = dialog.attachedToSystem
 			local overrides = frame and GetOverrides(frame, false)
 			if overrides and overrides[setting] then
 				overrides[setting] = nil
-				-- If the slider landed on the same step the override was based on, Blizzard saw no change
-				-- and the override value is still applied; re-apply with the plain step value.
-				local entry = frame.settingMap and frame.settingMap[setting]
-				if entry and entry.displayValue ~= frame.settingDisplayInfoMap[setting]:ConvertValueForDisplay(entry.value) then
-					frame:UpdateSystemSetting(setting)
-				end
+				ApplyValue(frame, setting, frame:GetSettingValue(setting))
+			end
+		end)
+
+		ns:On("PLAYER_REGEN_ENABLED", function()
+			for frame in pairs(pendingAfterCombat) do
+				pendingAfterCombat[frame] = nil
+				ApplyAllOverrides(frame)
 			end
 		end)
 	end)

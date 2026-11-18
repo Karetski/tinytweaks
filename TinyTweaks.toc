@@ -6,4 +6,5 @@
 
 Core.lua
 EditModeFineTune.lua
+EditModePosition.lua
 RaidGroupGrid.lua
