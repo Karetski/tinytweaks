@@ -287,9 +287,11 @@ item is its own commit, done when the area is next touched, with the integration
 green before and after (the suite characterizes current behavior, so these are safe
 refactors).
 
-1. **Pure logic is trapped in locals** (`GetCells`, `GetGridSize`, `JoinLabels`,
-   `DescribeSnapInfo`, value parsing and clamping). It is tested today only through the
-   emulator. Expose the compute layer so it gets direct unit tests (P4).
+1. **Pure logic lives in module locals** (`GetCells`, `GetGridSize`, `JoinLabels`,
+   `DescribeSnapInfo`, value parsing and clamping). The integration suite covers it
+   through behavior, which is the stronger test while the logic stays this small. Expose
+   a module's compute layer for unit tests (P4) when its cases outgrow what scenarios
+   cover cheaply, for example a new layout algorithm with many edge cases.
 2. **`SystemKey`, number parsing and the tooltip helper are duplicated** across modules.
    Move each into `Core` when a third copy would appear (P3).
 3. **`UpdatePanel` runs several times per selection** (it is hooked on `UpdateSettings`,
