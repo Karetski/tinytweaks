@@ -168,6 +168,12 @@ def check_taint():
                 blizzard.add(m.group(1))
                 if m.group(2) in layout_parents:
                     layout_parents.add(m.group(1))
+        # File-scope locals, including forward declarations (`local Foo` assigned further down).
+        file_locals = set()
+        for line in code_lines:
+            m = re.match(r"local\s+(?:function\s+)?([\w\s,]+?)\s*(?:=|\(|$)", line)
+            if m:
+                file_locals.update(name.strip() for name in m.group(1).split(","))
         names = "|".join(sorted(blizzard))
         set_script = re.compile(r"\b(" + names + r")\s*:\s*SetScript\s*\(")
         field_write = re.compile(r"\b(" + names + r")((?:\.\w+|\[[^\]]+\])+)\s*=(?!=)")
@@ -190,10 +196,11 @@ def check_taint():
             m = create_parented.search(line)
             if m:
                 error(where, f"CreateFrame parented to {m.group(1)}: parent to UIParent and anchor instead")
-            if re.match(r"function\s+[A-Za-z_]\w*\s*\(", line):
+            m = re.match(r"function\s+([A-Za-z_]\w*)\s*\(", line)
+            if m and m.group(1) not in file_locals:
                 error(where, "global function at file scope: make it local or a field of ns/the module")
             m = re.match(r"([A-Za-z_]\w*)\s*=(?!=)", line)
-            if m and m.group(1) != "TinyTweaksDB":
+            if m and m.group(1) != "TinyTweaksDB" and m.group(1) not in file_locals:
                 error(where, f"global assignment to {m.group(1)} at file scope: make it local")
 
 
