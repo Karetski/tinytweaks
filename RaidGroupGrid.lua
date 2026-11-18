@@ -334,7 +334,6 @@ end
 
 -- Refresh ------------------------------------------------------------------------------
 
-local pendingAfterCombat = false
 local gridApplied = false -- whether the grid is currently applied (so disabling restores Blizzard's layout)
 local reflowing = false
 
@@ -349,7 +348,7 @@ function M:Refresh()
 		return
 	end
 	if InCombatLockdown() then
-		pendingAfterCombat = true
+		ns:RunAfterCombat(M.Refresh, M)
 		return
 	end
 	if CompactRaidFrameContainer:GetGroupMode() ~= "discrete" then
@@ -789,13 +788,6 @@ function M:Init()
 			CreatePanel(EditModeSystemSettingsDialog)
 			hooksecurefunc(EditModeSystemSettingsDialog, "UpdateSettings", function()
 				M:UpdatePanel()
-			end)
-
-			ns:On("PLAYER_REGEN_ENABLED", function()
-				if pendingAfterCombat then
-					pendingAfterCombat = false
-					M:Refresh()
-				end
 			end)
 			-- Layout switched or reloaded: the new layout may have different grid settings.
 			hooksecurefunc(EditModeManagerFrame, "UpdateSystems", function()

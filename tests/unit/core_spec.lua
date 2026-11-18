@@ -140,3 +140,51 @@ test("given_the_addon_when_it_prints_then_the_message_has_the_addon_prefix", fun
 	-- Then
 	A.eq(world.printed, { "|cff66ccffTinyTweaks|r: hello 1" })
 end)
+
+test("given_work_queued_in_combat_when_combat_ends_then_each_pair_runs_once_in_queue_order", function()
+	-- Given
+	local world, ns = loaded()
+	local ran = {}
+	local function record(arg)
+		ran[#ran + 1] = arg
+	end
+	world:setCombat(true)
+	ns:RunAfterCombat(record, "a")
+	ns:RunAfterCombat(record, "b")
+	ns:RunAfterCombat(record, "a")
+	-- When
+	world:setCombat(false)
+	-- Then
+	A.eq(ran, { "a", "b" })
+end)
+
+test("given_queued_work_ran_when_combat_ends_again_then_nothing_runs_twice", function()
+	-- Given
+	local world, ns = loaded()
+	local count = 0
+	world:setCombat(true)
+	ns:RunAfterCombat(function()
+		count = count + 1
+	end, "x")
+	world:setCombat(false)
+	-- When
+	world:setCombat(true)
+	world:setCombat(false)
+	-- Then
+	A.eq(count, 1)
+end)
+
+test("given_registered_system_frames_when_iterating_them_then_existing_and_later_frames_are_visited", function()
+	-- Given
+	local world, ns = loaded()
+	local first = world:addSystemFrame(wow.frames.target())
+	local seen = {}
+	-- When
+	ns:ForEachSystemFrame(function(frame)
+		seen[frame] = (seen[frame] or 0) + 1
+	end)
+	local later = world:addSystemFrame(wow.frames.focus())
+	-- Then
+	A.eq(seen[first], 1, "an already registered frame is visited once")
+	A.eq(seen[later], 1, "a frame registered later is visited once")
+end)

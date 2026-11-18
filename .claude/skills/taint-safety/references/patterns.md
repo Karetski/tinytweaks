@@ -28,16 +28,11 @@ Live example: `ApplyValue` in `EditModeFineTune.lua`.
 ## Follow every system frame, now and later
 
 ```lua
-for _, frame in ipairs(EditModeManagerFrame.registeredSystemFrames) do
-	Hook(frame)
-end
-hooksecurefunc(EditModeManagerFrame, "RegisterSystemFrame", function(_, frame)
-	Hook(frame)
-end)
+ns:ForEachSystemFrame(Hook) -- registered frames now, and each one Blizzard registers later
 ```
 
 `Hook` must be idempotent (a local `hooked[frame] = true` set) because a frame can be
-registered again.
+registered again. Call it inside `ns:WhenLoaded("Blizzard_EditMode", ...)`.
 
 ## Move a frame relative to its Edit Mode pin
 
@@ -51,14 +46,15 @@ from addon code. Anchor offsets in `anchorInfo` are at scale 1.0; divide by
 
 ```lua
 if InCombatLockdown() and frame:IsProtected() then
-	pendingAfterCombat[frame] = true
+	ns:RunAfterCombat(Apply, frame) -- runs Apply(frame) once when combat ends
 	return
 end
--- PLAYER_REGEN_ENABLED: re-run the apply for each pending frame, then clear it.
 ```
 
-Key the pending set by frame so repeated triggers in combat collapse into one apply.
-Tell the player when an input can't apply now (`UIErrorsFrame:AddMessage(ERR_NOT_IN_COMBAT, ...)`).
+`ns:RunAfterCombat` runs each function/argument pair once, however often it was queued, in
+the order first queued, so repeated triggers in combat collapse into one apply. Queue the
+function that settles the frame's whole state, not just one value. Tell the player when an
+input can't apply now (`UIErrorsFrame:AddMessage(ERR_NOT_IN_COMBAT, ...)`).
 
 ## Side panel for the Edit Mode settings dialog
 

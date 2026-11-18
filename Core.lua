@@ -41,6 +41,42 @@ function ns:WhenLoaded(addon, fn)
 	end)
 end
 
+-- Work on protected frames waits for combat to end. Each fn/arg pair runs once, however often it
+-- was queued, in the order first queued.
+local afterCombat, afterCombatQueued = {}, {}
+
+function ns:RunAfterCombat(fn, arg)
+	local queued = afterCombatQueued[fn]
+	if not queued then
+		queued = {}
+		afterCombatQueued[fn] = queued
+	end
+	if queued[arg] then
+		return
+	end
+	queued[arg] = true
+	afterCombat[#afterCombat + 1] = { fn, arg }
+end
+
+ns:On("PLAYER_REGEN_ENABLED", function()
+	local queue = afterCombat
+	afterCombat, afterCombatQueued = {}, {}
+	for _, item in ipairs(queue) do
+		item[1](item[2])
+	end
+end)
+
+-- Calls fn(frame) for every Edit Mode system frame: those already registered, and each one Blizzard
+-- registers later. Requires Blizzard_EditMode to be loaded.
+function ns:ForEachSystemFrame(fn)
+	for _, frame in ipairs(EditModeManagerFrame.registeredSystemFrames) do
+		fn(frame)
+	end
+	hooksecurefunc(EditModeManagerFrame, "RegisterSystemFrame", function(_, frame)
+		fn(frame)
+	end)
+end
+
 function ns:Print(...)
 	print("|cff66ccffTinyTweaks|r:", ...)
 end

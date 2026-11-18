@@ -73,7 +73,7 @@ check, not a comment.
 interfaces" (Lattner, AOSA). Tools are assembled from the libraries they need.*
 
 `Core.lua` is a small library (events, Blizzard-addon load gating, per-layout storage,
-output). Each feature is one module file that depends only on `Core`. Modules never
+work deferred until combat ends, visiting every Edit Mode system frame, output). Each feature is one module file that depends only on `Core`. Modules never
 reference each other: the only shared state is the `ns` namespace that `Core` defines.
 This keeps every feature independently removable and testable, and is why disabling
 a feature can never break another.
@@ -200,7 +200,7 @@ never rejected silently.
 
 ```
 TinyTweaks.toc          load order: Core first, then one file per feature
-Core.lua                the library: ns, events, WhenLoaded, layout storage, Print
+Core.lua                the library: ns, events, WhenLoaded, layout storage, RunAfterCombat, ForEachSystemFrame, Print
 EditModeFineTune.lua    feature: typed values for safe Edit Mode sliders
 EditModePosition.lua    feature: X/Y offsets from a frame's Edit Mode pin
 RaidGroupGrid.lua       feature: raid groups arranged in a grid
@@ -285,21 +285,16 @@ item is its own commit, done when the area is next touched, with the integration
 green before and after (the suite characterizes current behavior, so these are safe
 refactors).
 
-1. **Combat deferral is written three times** (`pendingAfterCombat` + a
-   `PLAYER_REGEN_ENABLED` handler in each module). Move to one `Core` helper keyed by
-   frame (P3).
-2. **"Every system frame, now and later" is written twice** (iterate
-   `registeredSystemFrames`, then hook `RegisterSystemFrame`). One `Core` helper (P3).
-3. **Saved-data migrations are scattered and unversioned**: `RaidGroupGrid` migrates and
+1. **Saved-data migrations are scattered and unversioned**: `RaidGroupGrid` migrates and
    fills defaults inside `GetConfig` on every read (a warm path), and two modules prune
    old keys in `Init`. Add `TinyTweaksDB.version` and run ordered, tested migrations once
    at load (P9, P6).
-4. **Pure logic is trapped in locals** (`GetCells`, `GetGridSize`, `JoinLabels`,
+2. **Pure logic is trapped in locals** (`GetCells`, `GetGridSize`, `JoinLabels`,
    `DescribeSnapInfo`, value parsing and clamping). It is tested today only through the
    emulator. Expose the compute layer so it gets direct unit tests (P4).
-5. **`SystemKey`, number parsing and the tooltip helper are duplicated** across modules.
+3. **`SystemKey`, number parsing and the tooltip helper are duplicated** across modules.
    Move each into `Core` when a third copy would appear (P3).
-6. **`UpdatePanel` runs several times per selection** (it is hooked on `UpdateSettings`,
+4. **`UpdatePanel` runs several times per selection** (it is hooked on `UpdateSettings`,
    `AttachToSystemFrame`, `OnShow`, `UpdateDialog`, `UpdateRaidContainerFlow`,
    `UpdateSystems`). Coalesce to once per frame if measurement shows a cost (P6).
 

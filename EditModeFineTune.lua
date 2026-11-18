@@ -133,7 +133,7 @@ end
 
 -- Applying -------------------------------------------------------------------------
 
-local pendingAfterCombat = {} -- frame -> true
+local ApplyAllOverrides -- defined below; re-applies after combat
 local applied = {} -- frame -> { [setting] = true }: settings we've changed with a typed value
 
 -- Returns the typed value for this setting if it's still valid (the slider hasn't moved since).
@@ -195,7 +195,7 @@ local function ApplyValue(frame, setting, value)
 		return
 	end
 	if InCombatLockdown() and frame:IsProtected() then
-		pendingAfterCombat[frame] = true
+		ns:RunAfterCombat(ApplyAllOverrides, frame)
 		return
 	end
 	applied[frame] = applied[frame] or {}
@@ -214,7 +214,7 @@ local function ApplyOverride(frame, setting)
 	end
 end
 
-local function ApplyAllOverrides(frame)
+ApplyAllOverrides = function(frame)
 	local system = supported and supported[frame.system]
 	if system then
 		for setting in pairs(system) do
@@ -243,7 +243,7 @@ local function RestoreFrame(frame)
 			-- A managed frame back in its default position: its container places it, so only the
 			-- scale goes back to Blizzard's value. Nothing of ours applies anymore.
 			if InCombatLockdown() and frame:IsProtected() then
-				pendingAfterCombat[frame] = true
+				ns:RunAfterCombat(ApplyAllOverrides, frame)
 			else
 				local setScale = frame.SetScaleBase or frame.SetScale
 				setScale(frame, frame:GetSettingValue(setting) / 100)
@@ -446,12 +446,9 @@ function M:Init()
 			end
 		end
 
-		for _, frame in ipairs(EditModeManagerFrame.registeredSystemFrames) do
+		ns:ForEachSystemFrame(function(frame)
 			HookSystemFrame(frame)
 			ApplyAllOverrides(frame)
-		end
-		hooksecurefunc(EditModeManagerFrame, "RegisterSystemFrame", function(_, frame)
-			HookSystemFrame(frame)
 		end)
 
 		hooksecurefunc(EditModeSystemSettingsDialog, "UpdateSettings", DecorateDialog)
@@ -466,13 +463,6 @@ function M:Init()
 			if overrides and overrides[setting] then
 				overrides[setting] = nil
 				ApplyValue(frame, setting, frame:GetSettingValue(setting))
-			end
-		end)
-
-		ns:On("PLAYER_REGEN_ENABLED", function()
-			for frame in pairs(pendingAfterCombat) do
-				pendingAfterCombat[frame] = nil
-				ApplyAllOverrides(frame)
 			end
 		end)
 	end)

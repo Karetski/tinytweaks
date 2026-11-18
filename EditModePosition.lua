@@ -35,7 +35,6 @@ local SLIDER_WIDTH = 180
 local BOX_WIDTH = 48
 local ROW_WIDTH = LABEL_WIDTH + 5 + SLIDER_WIDTH + 10 + BOX_WIDTH + 6
 local PANEL_MIN_WIDTH = ROW_WIDTH + 2 * 24
-local pendingAfterCombat = {}
 
 local function Round1(value)
 	return math.floor(value * 10 + 0.5) / 10
@@ -114,7 +113,7 @@ local function ApplyOffset(frame)
 		return
 	end
 	if InCombatLockdown() and frame:IsProtected() then
-		pendingAfterCombat[frame] = true
+		ns:RunAfterCombat(ApplyOffset, frame)
 		return
 	end
 	local record = GetRecord(frame)
@@ -499,12 +498,7 @@ end
 
 function M:Init()
 	ns:WhenLoaded("Blizzard_EditMode", function()
-		for _, frame in ipairs(EditModeManagerFrame.registeredSystemFrames) do
-			HookSystemFrame(frame)
-		end
-		hooksecurefunc(EditModeManagerFrame, "RegisterSystemFrame", function(_, frame)
-			HookSystemFrame(frame)
-		end)
+		ns:ForEachSystemFrame(HookSystemFrame)
 
 		local dialog = EditModeSystemSettingsDialog
 		CreatePanel(dialog)
@@ -517,13 +511,6 @@ function M:Init()
 		end)
 		dialog:HookScript("OnHide", function()
 			panel:Hide()
-		end)
-
-		ns:On("PLAYER_REGEN_ENABLED", function()
-			for frame in pairs(pendingAfterCombat) do
-				pendingAfterCombat[frame] = nil
-				ApplyOffset(frame)
-			end
 		end)
 	end)
 end
