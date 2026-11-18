@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make check)",
+      "Bash(make test)",
+      "Bash(make test-unit)",
+      "Bash(make test-integration)",
+      "Bash(make test-invariants)",
+      "Bash(make lint)",
+      "Bash(make static)",
+      "Bash(make bench)",
+      "Bash(luajit tests/run.lua *)",
+      "Bash(luajit tests/run.lua)",
+      "Bash(python3 tools/check.py *)",
+      "Bash(python3 tools/check.py)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/claude-post-edit.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

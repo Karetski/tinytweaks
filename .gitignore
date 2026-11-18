@@ -2,3 +2,4 @@
 dist/
 .claude/settings.local.json
 CLAUDE.local.md
+.claude/scheduled_tasks.lock
