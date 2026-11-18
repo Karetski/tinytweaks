@@ -133,7 +133,7 @@ end
 
 -- Applying -------------------------------------------------------------------------
 
-local ApplyAllOverrides -- defined below; re-applies after combat
+local ApplyAllOverrides, SettleFrame -- defined below; re-run after combat
 local applied = {} -- frame -> { [setting] = true }: settings we've changed with a typed value
 
 -- Returns the typed value for this setting if it's still valid (the slider hasn't moved since).
@@ -243,7 +243,7 @@ local function RestoreFrame(frame)
 			-- A managed frame back in its default position: its container places it, so only the
 			-- scale goes back to Blizzard's value. Nothing of ours applies anymore.
 			if InCombatLockdown() and frame:IsProtected() then
-				ns:RunAfterCombat(ApplyAllOverrides, frame)
+				ns:RunAfterCombat(SettleFrame, frame)
 			else
 				local setScale = frame.SetScaleBase or frame.SetScale
 				setScale(frame, frame:GetSettingValue(setting) / 100)
@@ -251,6 +251,13 @@ local function RestoreFrame(frame)
 			end
 		end
 	end
+end
+
+-- Everything this module shows on the frame, settled: Blizzard's value where ours no longer
+-- applies, then each typed value that does.
+SettleFrame = function(frame)
+	RestoreFrame(frame)
+	ApplyAllOverrides(frame)
 end
 
 local function RestoreApplied()
@@ -277,10 +284,7 @@ local function HookSystemFrame(frame)
 	-- Re-anchoring can change whether a typed value applies (a managed frame entering or leaving
 	-- its default position) without any setting handler running.
 	if type(frame.ApplySystemAnchor) == "function" then
-		hooksecurefunc(frame, "ApplySystemAnchor", function(self)
-			RestoreFrame(self)
-			ApplyAllOverrides(self)
-		end)
+		hooksecurefunc(frame, "ApplySystemAnchor", SettleFrame)
 	end
 end
 

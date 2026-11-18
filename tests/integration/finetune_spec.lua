@@ -346,6 +346,21 @@ test("given_a_typed_size_on_a_managed_frame_when_it_returns_to_its_default_posit
 	A.eq(world.managedLayouts or 0, 0, "the managed layout never ran from TinyTweaks")
 end)
 
+test("given_a_typed_size_on_a_protected_managed_frame_when_it_returns_to_its_default_position_in_combat_then_blizzards_size_applies_after_combat", function()
+	-- Given
+	local world, frame = setup(wow.frames.durability({ isInDefaultPosition = true, protected = true }))
+	world:dragSystem(frame, { point = "TOP", relativeTo = "UIParent", relativePoint = "TOP", offsetX = 0, offsetY = -100 }, {})
+	world:selectSystem(frame)
+	world:typeInto(world:fineTuneBox("Size"), "87.5")
+	world:setCombat(true)
+	-- When
+	world:resetToDefaultPosition(frame)
+	A.near(frame:GetScale(), 0.875, nil, "nothing changes in combat")
+	world:setCombat(false)
+	-- Then
+	A.near(frame:GetScale(), 1, nil, "Blizzard's slider value once combat ends")
+end)
+
 test("given_a_typed_size_on_a_managed_frame_in_its_default_position_when_reverted_to_its_saved_pin_then_the_typed_size_returns", function()
 	-- Given
 	local world, frame = setup(wow.frames.durability({ isInDefaultPosition = true }))
