@@ -100,5 +100,3 @@ Phrases often attributed to Lattner that I couldn't source as his ("pay for what
   1. Add the `-console` launch argument.
   2. On the login screen, press the backtick key.
   3. Run `ExportInterfaceFiles code`.
-- **Lua 5.1 compatibility** is unverified until CI runs. Locally the tests have only run on LuaJIT.
-- **The CI matrix value `luajit-2.1`** for `leafo/gh-actions-lua` hasn't been checked against that action's accepted versions. If the job fails at setup, that value is the first thing to change.
