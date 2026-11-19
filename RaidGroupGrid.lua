@@ -4,6 +4,7 @@
 	  Columns 4, across:  1 2 3 4 / 5 6 7 8
 	  Columns 2, across:  1 2 / 3 4 / 5 6 / 7 8
 	  Columns 2, down:    1 5 / 2 6 / 3 7 / 4 8
+	  Columns 5, down:    1 3 5 7 8 / 2 4 6      (columns differ by at most one group, taller first)
 	  Start corner mirrors the grid (e.g. top right: 2 1 / 4 3 / ...).
 
 	Each cell is as large as the largest group. Cells keep their place even when a group is empty
@@ -86,28 +87,31 @@ end
 
 -- Grid -------------------------------------------------------------------------------
 
--- Returns the grid's actual column and row count. With "down", some column counts give the
--- same grid (8 groups in 5, 6 or 7 columns all need 2 rows, so only 4 columns get used).
-local function GetGridSize(columns, order)
+-- Returns the grid's column and row count.
+local function GetGridSize(columns)
 	local count = NUM_RAID_GROUPS
 	columns = math.max(1, math.min(count, math.floor(columns or 4)))
-	local rows = math.ceil(count / columns)
-	if order == "down" then
-		columns = math.ceil(count / rows)
-	end
-	return columns, rows
+	return columns, math.ceil(count / columns)
 end
 
 -- Returns group index -> { row, col } (0-based).
 local function GetCells(cfg)
-	local cols, rows = GetGridSize(cfg.columns, cfg.order)
+	local cols, rows = GetGridSize(cfg.columns)
 	local corner = cfg.corner or "TOPLEFT"
+	-- Down: the first `extra` columns hold one group more than the rest, so every column count
+	-- gives its own grid (equal columns can't make 5 to 7 columns from 8 groups).
+	local base, extra = math.floor(NUM_RAID_GROUPS / cols), NUM_RAID_GROUPS % cols
+	local tall = extra * (base + 1)
 	local cells = {}
 	for group = 1, NUM_RAID_GROUPS do
 		local index = group - 1
 		local row, col
 		if cfg.order == "down" then
-			row, col = index % rows, math.floor(index / rows)
+			if index < tall then
+				row, col = index % (base + 1), math.floor(index / (base + 1))
+			else
+				row, col = (index - tall) % base, extra + math.floor((index - tall) / base)
+			end
 		else
 			row, col = math.floor(index / cols), index % cols
 		end
@@ -449,17 +453,10 @@ local function CreateColumnsRow(parent)
 	local rowsText = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 	rowsText:SetPoint("LEFT", plus, "RIGHT", 8, 0)
 
-	-- Steps to the next column count that actually changes the grid, and stores the count the grid
-	-- uses, so the shown count stays when the order changes.
 	local function Step(delta)
-		local cfg = GetConfig(true)
-		local current = GetGridSize(cfg.columns, cfg.order)
-		local columns = current
-		repeat
-			columns = columns + delta
-		until columns < 1 or columns > NUM_RAID_GROUPS or GetGridSize(columns, cfg.order) ~= current
+		local columns = GetGridSize(GetConfig(true).columns) + delta
 		if columns >= 1 and columns <= NUM_RAID_GROUPS then
-			SetConfig("columns", (GetGridSize(columns, cfg.order)))
+			SetConfig("columns", columns)
 		end
 	end
 	minus:SetScript("OnClick", function()
@@ -470,7 +467,7 @@ local function CreateColumnsRow(parent)
 	end)
 
 	row.Update = function(_, cfg, enabled)
-		local cols, rows = GetGridSize(cfg.columns, cfg.order)
+		local cols, rows = GetGridSize(cfg.columns)
 		value:SetText(tostring(cols))
 		value:SetAlpha(enabled and 1 or 0.5)
 		rowsText:SetText(rows == 1 and "1 row" or (rows .. " rows"))
@@ -634,7 +631,7 @@ local function CreatePreview(parent)
 		preview.cells[group] = cell
 	end
 	preview.Update = function(self, cfg, enabled)
-		local cols, rows = GetGridSize(cfg.columns, cfg.order)
+		local cols, rows = GetGridSize(cfg.columns)
 		local gridW = cols * PREVIEW_CELL_W + (cols - 1) * PREVIEW_GAP
 		local left = math.floor((self:GetWidth() - gridW) / 2) -- centered
 		for group, cell in pairs(GetCells(cfg)) do

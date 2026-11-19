@@ -247,33 +247,53 @@ test("given_a_grid_in_one_layout_when_switching_layouts_then_each_layout_keeps_i
 	A.eq(world:raidGrid(), "1 2 3 4 / 5 6 7 8", "back in the main layout")
 end)
 
-test("given_down_order_when_stepping_columns_then_counts_that_give_the_same_grid_are_skipped", function()
+test("given_down_order_when_stepping_columns_then_every_count_from_1_to_8_is_reachable", function()
 	-- Given
 	local world = setup()
 	toggle(world)
 	choose(world, "Down")
-	A.eq(columnsText(world), "4")
-	-- When
-	world:click(world:findButton(panel(world), "+"))
-	-- Then
-	A.eq(columnsText(world), "8")
-	A.eq(world:raidGrid(), BLIZZARD_LINE)
-	world:click(world:findButton(panel(world), "-"))
-	A.eq(columnsText(world), "4")
+	setColumns(world, 1)
+	-- When / Then
+	local seen = { columnsText(world) }
+	for _ = 2, 8 do
+		world:click(world:findButton(panel(world), "+"))
+		seen[#seen + 1] = columnsText(world)
+	end
+	A.eq(seen, { "1", "2", "3", "4", "5", "6", "7", "8" })
 end)
 
-test("given_down_order_when_stepping_back_from_8_columns_and_switching_to_across_then_the_grid_keeps_4_columns", function()
+test("given_down_order_with_more_columns_than_fit_evenly_when_placed_then_taller_columns_come_first", function()
+	local cases = {
+		{ 5, "Top left", "1 3 5 7 8 / 2 4 6 . ." },
+		{ 6, "Top left", "1 3 5 6 7 8 / 2 4 . . . ." },
+		{ 7, "Top left", "1 3 4 5 6 7 8 / 2 . . . . . ." },
+		{ 3, "Top left", "1 4 7 / 2 5 8 / 3 6 ." },
+		{ 5, "Bottom right", ". . 6 4 2 / 8 7 5 3 1" },
+	}
+	for _, case in ipairs(cases) do
+		-- Given
+		local world = setup()
+		toggle(world)
+		choose(world, "Down")
+		-- When
+		setColumns(world, case[1])
+		corner(world, case[2])
+		-- Then
+		A.eq(world:raidGrid(), case[3], case[1] .. " columns, " .. case[2])
+	end
+end)
+
+test("given_down_order_when_switching_to_across_then_the_column_count_stays", function()
 	-- Given
 	local world = setup()
 	toggle(world)
 	choose(world, "Down")
-	world:click(world:findButton(panel(world), "+"))
-	world:click(world:findButton(panel(world), "-"))
+	setColumns(world, 5)
 	-- When
 	choose(world, "Across")
 	-- Then
-	A.eq(columnsText(world), "4")
-	A.eq(world:raidGrid(), "1 2 3 4 / 5 6 7 8")
+	A.eq(columnsText(world), "5")
+	A.eq(world:raidGrid(), "1 2 3 4 5 / 6 7 8 . .")
 end)
 
 -- Distance from root's top edge down to region's top edge, along a chain of TOPLEFT anchors.

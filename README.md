@@ -31,8 +31,8 @@ For example, drag a frame until it snaps to the screen center, then set Y Offset
 ### Raid group grid
 Arrange the raid groups (1–8) in a grid instead of a single row or column.
 
-- **Columns**: how many columns the grid has; the rows follow from that. With *Down*, 5 to 7
-  columns would give the same 2-row grid as 4, so the count goes from 4 straight to 8
+- **Columns**: how many columns the grid has; the rows follow from that. With *Down* and 5 to 7
+  columns, the first columns hold one group more than the rest (5 columns: 1 3 5 7 8 / 2 4 6)
 - **Order**: *Across* fills each row first, *Down* fills each column first
 - **Start**: the corner group 1 goes in
 - **Spacing**: horizontal and vertical space between groups
