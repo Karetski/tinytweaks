@@ -212,9 +212,16 @@ local function OnLogin()
 		hooksecurefunc(dialog, "AttachToSystemFrame", function(_, frame)
 			Record("selected", frame)
 		end)
+		-- Blizzard reports every step of a drag; one drag becomes one entry (first and last value).
 		hooksecurefunc(dialog, "OnSettingValueChanged", function(self, setting, value)
 			local frame = self.attachedToSystem
-			Add({ event = "slider", frame = frame and SystemKey(frame), name = frame and frame:GetName(), setting = setting, value = Plain(value) })
+			local key = frame and SystemKey(frame)
+			local last = entries[#entries]
+			if last and last.event == "slider" and last.frame == key and last.setting == setting then
+				last.value, last.steps = Plain(value), last.steps + 1
+				return
+			end
+			Add({ event = "slider", frame = key, name = frame and frame:GetName(), setting = setting, first = Plain(value), value = Plain(value), steps = 1 })
 		end)
 	end
 	Record("login")

@@ -109,3 +109,12 @@ test("given_a_character_layout_when_looking_up_records_then_the_key_with_the_cha
 	A.truthy(layout)
 	A.eq(key, "1:Main:Hero-Realm")
 end)
+
+test("given_a_slider_drag_recorded_as_one_entry_when_listed_then_it_shows_first_and_last_value_and_steps", function()
+	-- Given
+	local drag = { at = "19:23:41", event = "slider", frame = "3:5", name = "CompactRaidFrameContainer", setting = 20, first = 100, value = 92, steps = 61 }
+	-- When
+	local lines = R.trailLines({ drag })
+	-- Then
+	A.eq(lines[1], "19:23:41  slider: CompactRaidFrameContainer (3:5) setting 20 100 -> 92 (61 steps)")
+end)

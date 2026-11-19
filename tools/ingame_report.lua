@@ -217,7 +217,8 @@ function R.trailLines(entries)
 	for _, e in ipairs(entries or {}) do
 		local text
 		if e.event == "slider" then
-			text = string.format("slider: %s (%s) setting %s -> %s", tostring(e.name), tostring(e.frame), tostring(e.setting), tostring(e.value))
+			local range = e.first ~= nil and e.first ~= e.value and (tostring(e.first) .. " -> " .. tostring(e.value)) or ("-> " .. tostring(e.value))
+			text = string.format("slider: %s (%s) setting %s %s%s", tostring(e.name), tostring(e.frame), tostring(e.setting), range, (e.steps or 1) > 1 and string.format(" (%d steps)", e.steps) or "")
 		elseif e.event then
 			text = string.format("%s%s: %s", e.event, e.addon and (" by " .. e.addon) or "", tostring(e.message or e.func or ""):match("[^\n]*"))
 		elseif e.reason == "selected" then
