@@ -151,7 +151,7 @@ test("given_a_box_when_typing_text_that_is_not_a_number_then_nothing_changes", f
 	A.isNil(overrides(world, frame))
 end)
 
-test("given_a_typed_value_when_typing_the_slider_value_then_the_override_is_removed", function()
+test("given_a_typed_value_when_typing_the_slider_value_then_the_frames_record_is_removed", function()
 	-- Given
 	local world, frame = setup()
 	local box = world:fineTuneBox("FrameSize")
@@ -159,11 +159,11 @@ test("given_a_typed_value_when_typing_the_slider_value_then_the_override_is_remo
 	-- When
 	world:typeInto(box, "100")
 	-- Then
-	A.isNil(overrides(world, frame)[world:settingId(frame, "FrameSize")])
+	A.isNil(overrides(world, frame), "no empty record")
 	A.eq(frame:GetScale(), 1)
 end)
 
-test("given_a_typed_value_when_moving_the_slider_to_the_same_step_then_the_override_is_removed_and_blizzards_value_returns", function()
+test("given_a_typed_value_when_moving_the_slider_to_the_same_step_then_the_frames_record_is_removed_and_blizzards_value_returns", function()
 	-- Given
 	local world, frame = setup()
 	world:typeInto(world:fineTuneBox("FrameSize"), "87.5")
@@ -171,12 +171,12 @@ test("given_a_typed_value_when_moving_the_slider_to_the_same_step_then_the_overr
 	world:moveSlider("FrameSize", 100)
 	-- Then
 	A.eq(frame:GetScale(), 1)
-	A.isNil(overrides(world, frame)[world:settingId(frame, "FrameSize")])
+	A.isNil(overrides(world, frame), "no empty record")
 	-- The box text is refreshed by the next UpdateSettings; whether Blizzard calls it after a
 	-- slider move is not modelled (verify), so the box text isn't asserted here.
 end)
 
-test("given_a_typed_value_when_moving_the_slider_to_another_step_then_the_slider_value_applies", function()
+test("given_a_typed_value_when_moving_the_slider_to_another_step_then_the_slider_value_applies_and_the_frames_record_is_removed", function()
 	-- Given
 	local world, frame = setup()
 	world:typeInto(world:fineTuneBox("FrameSize"), "87.5")
@@ -184,7 +184,7 @@ test("given_a_typed_value_when_moving_the_slider_to_another_step_then_the_slider
 	world:moveSlider("FrameSize", 150)
 	-- Then
 	A.near(frame:GetScale(), 1.5)
-	A.isNil(overrides(world, frame)[world:settingId(frame, "FrameSize")])
+	A.isNil(overrides(world, frame), "no empty record")
 end)
 
 test("given_a_typed_value_when_blizzard_reverts_the_slider_step_then_the_override_stays_inactive", function()

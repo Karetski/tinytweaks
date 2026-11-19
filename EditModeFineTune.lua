@@ -121,6 +121,19 @@ local function GetOverrides(frame, create)
 	return overrides
 end
 
+-- Removes a typed value. Returns true if there was one. A frame without typed values keeps no record.
+local function ClearOverride(frame, setting)
+	local overrides = GetOverrides(frame, false)
+	if not (overrides and overrides[setting]) then
+		return false
+	end
+	overrides[setting] = nil
+	if not next(overrides) then
+		ns:GetLayoutDB(false).overrides[SystemKey(frame)] = nil
+	end
+	return true
+end
+
 local function FormatValue(value)
 	if not value then
 		return ""
@@ -301,10 +314,7 @@ end
 function M:SetValue(frame, setting, value)
 	local current = frame:GetSettingValue(setting)
 	if value == current then
-		local overrides = GetOverrides(frame, false)
-		if overrides then
-			overrides[setting] = nil
-		end
+		ClearOverride(frame, setting)
 	else
 		local useRawValue = true
 		GetOverrides(frame, true)[setting] = { value = value, raw = frame:GetSettingValue(setting, useRawValue) }
@@ -463,9 +473,7 @@ function M:Init()
 		-- ourselves (the same widget call its handler makes).
 		hooksecurefunc(EditModeSystemSettingsDialog, "OnSettingValueChanged", function(dialog, setting)
 			local frame = dialog.attachedToSystem
-			local overrides = frame and GetOverrides(frame, false)
-			if overrides and overrides[setting] then
-				overrides[setting] = nil
+			if frame and ClearOverride(frame, setting) then
 				ApplyValue(frame, setting, frame:GetSettingValue(setting))
 			end
 		end)
