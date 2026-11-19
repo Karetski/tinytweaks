@@ -82,3 +82,13 @@ cause, the rule it violates, the fix in place. Add one entry per newly discovere
 - **Root cause:** raid frames are protected; widget calls on them are refused in combat.
 - **Rule:** defer protected work to `PLAYER_REGEN_ENABLED`.
 - **Fix:** during combat Blizzard's layout stands; the grid re-applies when combat ends.
+
+## Opening the settings panel in combat
+
+- **Symptom:** clicking the minimap button in combat does nothing, and each click raises
+  `ADDON_ACTION_BLOCKED` naming TinyTweaks and `OpenSettingsPanel()`.
+- **Root cause:** `Settings.OpenToCategory` calls `C_SettingsUtil.OpenSettingsPanel`, which
+  is restricted (`HasRestrictions`); the client refuses it from addon code in combat.
+- **Rule:** never call a restricted API from addon code while `InCombatLockdown()`.
+- **Fix:** in combat the button shows `ERR_NOT_IN_COMBAT` instead; the emulator flags the
+  call in combat as a blocked action.

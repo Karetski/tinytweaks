@@ -54,6 +54,7 @@ TinyTweaks has a page in the game's settings under **Options → AddOns → Tiny
 ## Limitations
 - Raid frames are protected in combat. If the roster changes during combat, the affected groups use Blizzard's layout until combat ends.
 - Typed values on protected frames (such as unit frames) can't change during combat; they apply when combat ends.
+- The game doesn't let addons open its settings during combat, so the minimap button only opens the page out of combat.
 
 ## Installation
 Copy or symlink this folder into `World of Warcraft/_forever_/Interface/AddOns/TinyTweaks`.

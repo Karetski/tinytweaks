@@ -87,7 +87,12 @@ local function SavedAngle()
 	return db and db.angle or DEFAULT_ANGLE
 end
 
+-- The client blocks opening the settings panel from addon code in combat.
 local function OpenPage()
+	if InCombatLockdown() then
+		UIErrorsFrame:AddMessage(ERR_NOT_IN_COMBAT, 1, 0.1, 0.1)
+		return
+	end
 	Settings.OpenToCategory(category:GetID())
 end
 

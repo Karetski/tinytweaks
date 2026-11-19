@@ -50,6 +50,17 @@ test("given_the_minimap_button_when_clicked_then_settings_open_on_the_tinytweaks
 	A.truthy(world.currentCategory.frame:IsVisible())
 end)
 
+test("given_combat_when_the_minimap_button_is_clicked_then_settings_stay_closed_and_the_player_is_told_why", function()
+	-- Given
+	local world = setup()
+	world:setCombat(true)
+	-- When
+	world:click(world:minimapButton())
+	-- Then: no blocked action (the emulator would record one)
+	A.falsy(world.settingsPanel:IsShown())
+	A.eq(world.uiErrors, { "You can't do that while in combat" })
+end)
+
 test("given_the_minimap_button_when_hovered_then_the_tooltip_says_what_it_does", function()
 	-- Given
 	local world = setup()
