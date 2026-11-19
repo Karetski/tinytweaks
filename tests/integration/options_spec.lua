@@ -3,9 +3,14 @@
 local wow = require("support.wow")
 local A = require("support.assert")
 
+local RECORDER = "!TinyTweaksDev"
+
 local function setup(opts)
 	opts = opts or {}
 	local world = wow.new({ saved = opts.saved })
+	if opts.recorder then
+		world:installAddon(RECORDER, opts.recorder)
+	end
 	world:loadAddon()
 	return world
 end
@@ -124,6 +129,95 @@ test("given_a_hidden_button_when_show_minimap_button_is_checked_then_it_returns_
 	-- Then
 	A.truthy(world:minimapButton():IsShown())
 	A.isNil(world:saved().minimap)
+end)
+
+-- Debug ----------------------------------------------------------------------------------------
+
+local function debugBox(world)
+	return world:findCheckbox(page(world), "Record debug sessions")
+end
+
+local function reloadPrompt(world)
+	local p = page(world)
+	local text = world:findText(p, "Reload to apply.")
+	local button = world:findButton(p, "Reload UI")
+	return text and text:IsVisible() and button and button:IsVisible() and button or nil
+end
+
+test("given_the_recorder_not_installed_when_the_page_opens_then_it_has_no_debug_section", function()
+	-- Given / When
+	local world = setup()
+	-- Then
+	A.isNil(debugBox(world))
+	A.isNil(world:findText(page(world), "Debug"))
+end)
+
+test("given_the_recorder_running_when_the_page_opens_then_debug_recording_is_checked_with_no_reload_prompt", function()
+	-- Given / When
+	local world = setup({ recorder = { enabled = true, loaded = true } })
+	-- Then
+	A.truthy(debugBox(world):IsVisible())
+	A.truthy(debugBox(world):GetChecked())
+	A.isNil(reloadPrompt(world))
+end)
+
+test("given_the_recorder_running_when_debug_recording_is_unchecked_then_it_is_disabled_taint_logging_stops_and_a_reload_is_offered", function()
+	-- Given
+	local world = setup({ recorder = { enabled = true, loaded = true } })
+	world.cvars.taintLog = "1"
+	-- When
+	world:click(debugBox(world))
+	-- Then
+	A.falsy(world.addons[RECORDER].enabled)
+	A.eq(world.cvars.taintLog, "0")
+	A.truthy(reloadPrompt(world))
+end)
+
+test("given_the_recorder_disabled_when_debug_recording_is_checked_then_it_is_enabled_and_a_reload_is_offered", function()
+	-- Given
+	local world = setup({ recorder = { enabled = false } })
+	A.falsy(debugBox(world):GetChecked())
+	-- When
+	world:click(debugBox(world))
+	-- Then
+	A.truthy(world.addons[RECORDER].enabled)
+	A.truthy(reloadPrompt(world))
+	-- And unchecking returns to what is loaded, so nothing needs a reload
+	world:click(debugBox(world))
+	A.isNil(reloadPrompt(world))
+end)
+
+test("given_a_pending_debug_change_when_reload_ui_is_clicked_then_the_ui_reloads", function()
+	-- Given
+	local world = setup({ recorder = { enabled = false } })
+	world:click(debugBox(world))
+	-- When
+	world:click(reloadPrompt(world))
+	-- Then
+	A.eq(world.reloads, 1)
+end)
+
+test("given_debug_recording_unchecked_when_the_addon_list_closes_without_okay_then_the_change_stays", function()
+	-- Given
+	local world = setup({ recorder = { enabled = true, loaded = true } })
+	world:click(debugBox(world))
+	-- When
+	world:closeAddonList(false)
+	-- Then
+	A.falsy(world.addons[RECORDER].enabled)
+end)
+
+test("given_the_recorder_toggled_in_the_addon_list_when_the_page_is_opened_again_then_it_shows_the_new_state", function()
+	-- Given
+	local world = setup({ recorder = { enabled = true, loaded = true } })
+	page(world)
+	world:closeSettings()
+	world.addons[RECORDER].enabled = false
+	-- When
+	world:click(world:minimapButton())
+	-- Then
+	A.falsy(debugBox(world):GetChecked())
+	A.truthy(reloadPrompt(world))
 end)
 
 -- Missing capabilities ------------------------------------------------------------------------

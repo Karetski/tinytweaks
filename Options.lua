@@ -4,9 +4,15 @@
 
 	  * Minimap button: on the minimap's edge; click opens the page, drag moves it around the edge.
 	    "Show minimap button" on the page hides it.
+	  * Debug: only when the dev recorder (!TinyTweaksDev) is installed. "Record debug sessions"
+	    enables or disables the recorder for every character and saves that at once (the AddOns
+	    list reverts unsaved changes when it closes without Okay); turning it off also turns taint
+	    logging off at once (the recorder turns it on when it loads). The recorder change takes
+	    effect on reload, which the page offers while the setting differs from what is loaded.
 
 	Stored (account-wide, not per layout): TinyTweaksDB.minimap = { hide = true?, angle = degrees? },
-	absent while everything is at its default (shown, at DEFAULT_ANGLE).
+	absent while everything is at its default (shown, at DEFAULT_ANGLE). The recorder's enable state
+	is the client's own; nothing about it is stored here.
 
 	Taint notes: the page is an addon frame registered with Settings.RegisterCanvasLayoutCategory and
 	Settings.RegisterAddOnCategory, which hand it to the panel through Blizzard's forbidden delegate;
@@ -24,6 +30,7 @@ local M = {}
 table.insert(ns.modules, M)
 
 local TITLE = "TinyTweaks"
+local RECORDER = "!TinyTweaksDev"
 local DEFAULT_ANGLE = 225 -- degrees, counterclockwise from the right: bottom left
 local BUTTON_SIZE = 31
 local EDGE_OFFSET = 10 -- button center beyond the minimap's radius
@@ -159,6 +166,61 @@ local function CreateCheckbox(parent, label)
 	return box
 end
 
+-- What the debug section needs; without any of it the section isn't built.
+local function HasAddOnAPI()
+	return type(C_AddOns.DoesAddOnExist) == "function" and type(C_AddOns.GetAddOnEnableState) == "function"
+		and type(C_AddOns.EnableAddOn) == "function" and type(C_AddOns.DisableAddOn) == "function"
+		and type(C_AddOns.SaveAddOns) == "function" and Enum.AddOnEnableState ~= nil
+		and C_CVar ~= nil and type(C_CVar.SetCVar) == "function" and type(ReloadUI) == "function"
+end
+
+local function IsRecorderEnabled()
+	return C_AddOns.GetAddOnEnableState(RECORDER, UnitGUID("player")) > Enum.AddOnEnableState.None
+end
+
+-- Debug section, built only when the recorder is installed.
+local function CreateDebugSection(anchor)
+	local section = CreateFrame("Frame", nil, page)
+	section:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -16)
+	section:SetSize(400, 100)
+
+	local header = section:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	header:SetPoint("TOPLEFT", 4, 0)
+	header:SetText("Debug")
+
+	local record = CreateCheckbox(section, "Record debug sessions")
+	record:SetPoint("TOPLEFT", header, "BOTTOMLEFT", -4, -6)
+	record:SetScript("OnClick", function(self)
+		if self:GetChecked() then
+			C_AddOns.EnableAddOn(RECORDER)
+		else
+			C_AddOns.DisableAddOn(RECORDER)
+			C_CVar.SetCVar("taintLog", "0")
+		end
+		-- Unsaved, the change would be undone when the AddOns list closes without Okay.
+		C_AddOns.SaveAddOns()
+		M:UpdatePanel()
+	end)
+	record:SetScript("OnEnter", function(self)
+		ns:ShowTooltip(self, "Record debug sessions", "Records Lua errors, blocked actions and frame state for testing, and turns on the taint log.")
+	end)
+	record:SetScript("OnLeave", GameTooltip_Hide)
+
+	local reload = CreateFrame("Button", nil, section, "UIPanelButtonTemplate")
+	reload:SetSize(120, 22)
+	reload:SetPoint("TOPLEFT", record, "BOTTOMLEFT", 4, -4)
+	reload:SetText("Reload UI")
+	reload:SetScript("OnClick", function()
+		ReloadUI()
+	end)
+
+	local note = section:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	note:SetPoint("LEFT", reload, "RIGHT", 8, 0)
+	note:SetText("Reload to apply.")
+
+	page.Record, page.Reload, page.ReloadNote = record, reload, note
+end
+
 local function CreatePage()
 	page = CreateFrame("Frame")
 	page:Hide() -- shown by the settings panel, so each display runs OnShow
@@ -171,6 +233,7 @@ local function CreatePage()
 	version:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
 	version:SetText("Version " .. tostring(C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version")))
 
+	local last = version
 	if button then
 		local show = CreateCheckbox(page, "Show minimap button")
 		show:SetPoint("TOPLEFT", version, "BOTTOMLEFT", -4, -16)
@@ -179,6 +242,11 @@ local function CreatePage()
 			button:SetShown(self:GetChecked())
 		end)
 		page.ShowButton = show
+		last = show
+	end
+
+	if HasAddOnAPI() and C_AddOns.DoesAddOnExist(RECORDER) then
+		CreateDebugSection(last)
 	end
 
 	page:SetScript("OnShow", function()
@@ -190,6 +258,13 @@ function M:UpdatePanel()
 	if page.ShowButton then
 		local db = GetMinimapDB()
 		page.ShowButton:SetChecked(not (db and db.hide))
+	end
+	if page.Record then
+		local enabled = IsRecorderEnabled()
+		local pending = enabled ~= (C_AddOns.IsAddOnLoaded(RECORDER) and true or false)
+		page.Record:SetChecked(enabled)
+		page.Reload:SetShown(pending)
+		page.ReloadNote:SetShown(pending)
 	end
 end
 

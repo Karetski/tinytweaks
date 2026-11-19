@@ -92,5 +92,7 @@ That step is click-and-look for the person playing; recording is automatic:
   `tests/unit/ingame_report_spec.lua`. The recorder itself only runs in the client; the taint
   lint and luacheck cover it.
 
-Taint logging costs a little; when not developing, disable TinyTweaks Dev in the AddOns list
-and run `/console taintLog 0` once.
+Taint logging costs a little. When not developing, uncheck **Record debug sessions** on the
+TinyTweaks settings page (minimap button, or Options → AddOns → TinyTweaks) and click Reload UI:
+that disables the recorder and turns `taintLog` off. Check it again to resume recording. The
+section is shown only while the recorder is installed.

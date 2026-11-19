@@ -12,6 +12,9 @@
 	    raid groups' positions when Edit Mode opens or closes, a frame is selected, a layout changes,
 	    combat starts or ends, and at logout.
 
+	"Record debug sessions" on the TinyTweaks settings page is its switch: unchecking it disables this
+	addon from the next reload and turns taintLog off at once; checking it enables this addon again.
+
 	Everything goes to TinyTweaksDevLog, which the client writes on /reload or logout. The session
 	records whether it ended in a reload or a logout. Same taint contract as TinyTweaks: post-hooks,
 	HookScript and reads only.

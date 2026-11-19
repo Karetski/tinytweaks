@@ -26,6 +26,7 @@ globals = {
 read_globals = {
 	-- WoW API and Blizzard UI
 	"C_AddOns",
+	"C_CVar",
 	"C_GameRules",
 	"C_Timer",
 	"CompactRaidFrameContainer",
@@ -47,9 +48,11 @@ read_globals = {
 	"MinimalSliderWithSteppersMixin",
 	"Minimap",
 	"NUM_RAID_GROUPS",
+	"ReloadUI",
 	"Settings",
 	"UIErrorsFrame",
 	"UIParent",
+	"UnitGUID",
 	"UnitName",
 }
 
