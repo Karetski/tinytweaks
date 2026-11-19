@@ -2,6 +2,7 @@
 ## Title: TinyTweaks Dev
 ## Notes: Development only. Records Lua errors, blocked actions and Edit Mode frame state for TinyTweaks testing.
 ## Version: dev
+## Group: TinyTweaks
 ## SavedVariables: TinyTweaksDevLog
 
 Recorder.lua
