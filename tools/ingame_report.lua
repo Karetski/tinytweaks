@@ -8,8 +8,12 @@
 	  5. the trail: frame selections, slider moves, Edit Mode, combat, layout changes.
 
 	Usage (tools/ingame.sh finds the files):
-	  luajit tools/ingame_report.lua <TinyTweaks.lua> <!TinyTweaksDev.lua> <taint.log>
+	  luajit tools/ingame_report.lua <TinyTweaks.lua> <!TinyTweaksDev.lua> <taint.log> [since]
 	  luajit tools/ingame_report.lua --ended <!TinyTweaksDev.lua>   prints how the last session ended
+
+	With `since` ("YYYY-MM-DD HH:MM:SS", when a watch started), errors and the trail cover every
+	session that ended since then, so a test run with /reloads in it is reported whole; saved
+	records are checked against the last one. Without it, only the last session is reported.
 
 	Loaded with dofile (the tests do), it returns its functions instead of running.
 ]]
@@ -244,34 +248,64 @@ local function readFile(path)
 	return text
 end
 
-function R.report(dbPath, devPath, taintPath)
+-- Sessions that ended at or after `since` ("YYYY-MM-DD HH:MM:SS", which compares as text), oldest
+-- first; without `since`, the last session. A session with no end yet counts as ending last.
+function R.sessionsSince(sessions, since)
+	if not since then
+		return { sessions[#sessions] }
+	end
+	local out = {}
+	for _, session in ipairs(sessions) do
+		if (session.endedAt or "~") >= since then
+			out[#out + 1] = session
+		end
+	end
+	return out
+end
+
+local function describeSession(session)
+	return string.format("%s to %s (%s)", tostring(session.started), tostring(session.endedAt or "?"),
+		tostring(session.ended or "no logout recorded: crash, or still running"))
+end
+
+function R.report(dbPath, devPath, taintPath, since)
 	local out = {}
 	local function say(...)
 		out[#out + 1] = string.format(...)
 	end
 	local log = R.loadSaved(devPath, "TinyTweaksDevLog")
-	local sessions = log and log.sessions or {}
-	local session = sessions[#sessions]
+	local selected = R.sessionsSince(log and log.sessions or {}, since)
+	local session = selected[#selected]
 	local db = R.loadSaved(dbPath, "TinyTweaksDB")
 
 	say("## Session")
 	if not session then
-		say("No TinyTweaks Dev session recorded (%s). Is !TinyTweaksDev installed (make link) and enabled?", tostring(devPath))
+		say("No TinyTweaks Dev session recorded%s (%s). Is !TinyTweaksDev installed (make link) and enabled?",
+			since and (" since " .. since) or "", tostring(devPath))
 		return table.concat(out, "\n")
 	end
-	say("started %s, ended %s (%s)", session.started, tostring(session.endedAt or "?"), tostring(session.ended or "no logout recorded: crash, or still running"))
+	if since then
+		say("%d session%s since the watch started (%s):", #selected, #selected == 1 and "" or "s", since)
+		for i, s in ipairs(selected) do
+			say("  %d. %s", i, describeSession(s))
+		end
+	else
+		say("%s", describeSession(session))
+	end
 	say("build %s; TinyTweaks %s; taintLog %s%s; scriptErrors %s", tostring(session.build), tostring(session.tinyTweaksVersion), tostring(session.taintLog), session.taintLogError and (" (could not set: " .. session.taintLogError .. ")") or "", tostring(session.scriptErrors))
 	say("%d addons loaded%s", #(session.addons or {}), session.truncated and "; TRAIL TRUNCATED" or "")
 
 	say("")
 	say("## Errors and blocked actions")
 	local ours, theirs = {}, {}
-	for _, e in ipairs(session.entries or {}) do
-		if e.event and e.event ~= "slider" then
-			if R.isOurs(e) then
-				ours[#ours + 1] = e
-			else
-				theirs[#theirs + 1] = e
+	for _, s in ipairs(selected) do
+		for _, e in ipairs(s.entries or {}) do
+			if e.event and e.event ~= "slider" then
+				if R.isOurs(e) then
+					ours[#ours + 1] = e
+				else
+					theirs[#theirs + 1] = e
+				end
 			end
 		end
 	end
@@ -324,8 +358,13 @@ function R.report(dbPath, devPath, taintPath)
 
 	say("")
 	say("## Trail")
-	for _, line in ipairs(R.trailLines(session.entries)) do
-		say("%s", line)
+	for i, s in ipairs(selected) do
+		if #selected > 1 then
+			say("### session %d: %s", i, describeSession(s))
+		end
+		for _, line in ipairs(R.trailLines(s.entries)) do
+			say("%s", line)
+		end
 	end
 	return table.concat(out, "\n")
 end
@@ -337,7 +376,7 @@ if arg and arg[0] and arg[0]:find("ingame_report%.lua$") then
 		local session = sessions[#sessions]
 		print(session and session.ended or "none")
 	else
-		print(R.report(arg[1], arg[2], arg[3]))
+		print(R.report(arg[1], arg[2], arg[3], arg[4]))
 	end
 end
 

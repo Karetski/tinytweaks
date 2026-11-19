@@ -29,7 +29,7 @@ a Blizzard frame.
 | `docs/PERFORMANCE.md` | Frequency tiers, budgets, measuring |
 | `tests/` | Runner, emulator (`support/wow.lua`), unit, integration, invariants, bench |
 | `dev/!TinyTweaksDev/` | Dev-only recorder addon for in-game sessions (errors, blocked actions, frame snapshots); never shipped |
-| `tools/ingame.sh`, `tools/ingame_report.lua` | Wait for logout and report on an in-game session |
+| `tools/ingame.sh`, `tools/ingame_report.lua` | Wait for the end of an in-game test run and report on it |
 | `tools/check.py` | TOC parity, taint-contract lint, skill validation |
 | `CHANGELOG.md` | Player-facing changes; add to *Unreleased* with every user-visible change |
 
@@ -41,7 +41,7 @@ make test               # tests only;  make test-unit / make test-integration
 luajit tests/run.lua -f <name>   # run tests whose name contains <name>
 make bench              # timings and KB allocated per op for warm paths
 make link               # symlink this repo and the dev recorder into the game's AddOns folder
-make ingame-wait        # wait for the game to log out, then report on the session
+make ingame-wait        # wait for a logout (or SAVES=n reloads/logouts), then report on the run
 make ingame-report      # report on the last in-game session
 make dist               # build dist/TinyTweaks-<version>.zip
 ```

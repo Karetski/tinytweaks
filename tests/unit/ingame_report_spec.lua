@@ -118,3 +118,37 @@ test("given_a_slider_drag_recorded_as_one_entry_when_listed_then_it_shows_first_
 	-- Then
 	A.eq(lines[1], "19:23:41  slider: CompactRaidFrameContainer (3:5) setting 20 100 -> 92 (61 steps)")
 end)
+
+test("given_sessions_and_the_time_a_watch_started_when_selected_then_those_that_ended_since_are_returned_oldest_first", function()
+	-- Given
+	local before = { started = "2026-11-18 20:00:00", endedAt = "2026-11-18 20:10:00", ended = "logout" }
+	local first = { started = "2026-11-18 20:05:00", endedAt = "2026-11-18 20:20:00", ended = "reload" }
+	local second = { started = "2026-11-18 20:20:05", endedAt = "2026-11-18 20:30:00", ended = "reload" }
+	local sessions = { before, first, second }
+	-- When / Then
+	A.eq(R.sessionsSince(sessions, "2026-11-18 20:15:00"), { first, second })
+	A.eq(R.sessionsSince(sessions, nil), { second })
+	A.eq(R.sessionsSince({}, nil), {})
+end)
+
+test("given_two_sessions_since_the_watch_when_reported_then_both_trails_and_errors_appear_and_records_use_the_last", function()
+	-- Given
+	local dir = os.getenv("TMPDIR") or "/tmp"
+	local devPath = dir .. "/ingame_report_spec_dev.lua"
+	local f = assert(io.open(devPath, "w"))
+	f:write([[TinyTweaksDevLog = { sessions = {
+		{ started = "2026-11-18 20:00:00", endedAt = "2026-11-18 20:05:00", ended = "reload", taintLog = "1",
+		  entries = { { at = "20:01:00", event = "blocked", addon = "TinyTweaks", func = "OpenSettingsPanel()" } } },
+		{ started = "2026-11-18 20:05:05", endedAt = "2026-11-18 20:09:00", ended = "reload", taintLog = "1",
+		  entries = { { at = "20:06:00", reason = "combat started" } } },
+	} }]])
+	f:close()
+	-- When
+	local text = R.report(dir .. "/missing_db.lua", devPath, dir .. "/missing_taint.log", "2026-11-18 19:59:00")
+	os.remove(devPath)
+	-- Then
+	A.contains(text, "2 sessions since the watch started")
+	A.contains(text, "TinyTweaks blocked x1 at 20:01:00: OpenSettingsPanel()")
+	A.contains(text, "20:06:00  combat started")
+	A.contains(text, "### session 2: 2026-11-18 20:05:05 to 2026-11-18 20:09:00 (reload)")
+end)

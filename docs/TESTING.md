@@ -83,11 +83,13 @@ That step is click-and-look for the person playing; recording is automatic:
   packaged). The recorder loads before TinyTweaks, turns on `taintLog`, and saves Lua errors
   and warnings, blocked actions, slider moves and snapshots of the Edit Mode frames and raid
   groups to `TinyTweaksDevLog` (written on `/reload` or logout).
-- `make ingame-wait` blocks until the game logs out (it ignores `/reload`), then prints the
-  report; `make ingame-report` prints it for the last session. The report lists TinyTweaks'
-  errors and taint.log entries, checks every saved typed value and offset against the
-  frame's state at logout, shows the raid grid as placed on screen, and replays the session's
-  trail.
+- `make ingame-wait` blocks until the game logs out, then prints the report for every
+  session since the wait began. `make ingame-wait SAVES=n` also ends after n saves: each
+  `/reload` and each logout writes once, so a test script with two `/reload`s that ends with a
+  third passes `SAVES=3`. `make ingame-report` prints the report for the last session. The
+  report lists TinyTweaks' errors and taint.log entries, checks every saved typed value and
+  offset against the frames' state when the last session ended, shows the raid grid as placed
+  on screen, and replays each session's trail.
 - The report's checks live in `tools/ingame_report.lua` and are unit-tested in
   `tests/unit/ingame_report_spec.lua`. The recorder itself only runs in the client; the taint
   lint and luacheck cover it.

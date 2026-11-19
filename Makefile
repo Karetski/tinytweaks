@@ -25,7 +25,7 @@ help:
 	@echo "make dist              dist/$(ADDON)-$(VERSION).zip"
 	@echo "make link              symlink this repo and the dev recorder into \$$WOW_DIR/Interface/AddOns"
 	@echo "make ingame-report     report on the last in-game session (errors, taint.log, saved vs. live state)"
-	@echo "make ingame-wait       wait for the game to log out, then print that report"
+	@echo "make ingame-wait       wait for the game to log out (or for SAVES=n reloads/logouts), then report"
 
 check: lint-optional static test
 
@@ -89,7 +89,7 @@ ingame-report:
 	@WOW_DIR="$(WOW_DIR)" LUA="$(LUA)" tools/ingame.sh report
 
 ingame-wait:
-	@WOW_DIR="$(WOW_DIR)" LUA="$(LUA)" tools/ingame.sh wait
+	@WOW_DIR="$(WOW_DIR)" LUA="$(LUA)" SAVES="$(SAVES)" tools/ingame.sh wait
 
 clean:
 	rm -rf dist

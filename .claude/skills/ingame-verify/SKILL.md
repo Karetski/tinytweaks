@@ -39,9 +39,12 @@ the frame's state at logout (PASS/FAIL/INFO), the raid grid as seen on screen, a
 2. Both links exist: `ls -la "$WOW/Interface/AddOns" | grep -i tinytweaks`. If either is
    missing, run `make link` (it only creates or updates symlinks; it needs to run outside
    the sandbox because it writes into the game folder).
-3. Start the watcher in the background: `make ingame-wait` with `run_in_background`. It
-   ignores `/reload` and finishes when the game logs out, printing the report. You are
-   notified then; don't poll.
+3. Write the script (section 2) first, then start the watcher in the background with
+   `run_in_background`: `make ingame-wait SAVES=n`, where n counts every `/reload` and
+   "Reload UI" click in the script, the opening and the closing one included, while the
+   recorder is enabled (a session without it saves nothing). It finishes after that
+   many saves, or at a logout, and prints the report for every session since it started. You
+   are notified then; don't poll.
 
 ## 2. Write the script for the user
 
@@ -53,13 +56,14 @@ on the emulator alone; the emulator has been wrong about which settings a frame 
 what the tests can't: the real look of the panel, combat (a training dummy, then change
 settings) and a layout switch.
 
-End with: "`/logout` to character select. That's all; I'll take it from there." Ask the user
+End with: "`/reload`. That's all; I'll take it from there." Ask the user
 to mention anything that *looked* wrong (layout, overlap, wrong frame moving); errors are
 recorded without them.
 
-A second round, after the report: log back in to confirm persistence; disable TinyTweaks
-in the AddOns list and log in to confirm Blizzard's own layout is intact (P1). Start
-`make ingame-wait` again before each round.
+A second round, after the report: `/reload` to confirm persistence; disable TinyTweaks
+in the AddOns list and reload to confirm Blizzard's own layout is intact (P1). Start
+`make ingame-wait SAVES=n` again before each round. A session with the recorder disabled
+writes nothing, so it doesn't count as a save.
 
 ## 3. Read the evidence
 
