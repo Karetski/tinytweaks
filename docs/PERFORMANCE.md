@@ -21,7 +21,7 @@ handler, timer, script) belongs to one tier, and the tier sets the budget.
 | **T0 Load** | once per session or per Blizzard addon load | `ADDON_LOADED`, `Init`, panel creation, migrations | < 5 ms total for the addon | free |
 | **T1 Interaction** | per player action, a few per second at most | typing a value, clicking Columns/Order/Start, selecting a frame | < 1 ms | modest |
 | **T2 Warm** | driven by Blizzard, bursty: many per second during slider drags, layout passes, roster changes | `UpdateSystemSetting*`, `ApplySystemAnchor`, `LayoutFrames`, `updateLayoutFunc`, `UpdateSystems`, `UpdateSettings` post-hooks | < 0.1 ms when the feature is off; < 0.5 ms when it acts | none when off; bounded and small when on |
-| **T3 Hot** | every frame or per high-frequency event (`OnUpdate`, `COMBAT_LOG_EVENT_UNFILTERED`, `UNIT_AURA`) | none today | design review required | none |
+| **T3 Hot** | every frame or per high-frequency event (`OnUpdate`, `COMBAT_LOG_EVENT_UNFILTERED`, `UNIT_AURA`) | the minimap button's drag (`Options.lua`, D9) | design review required | none |
 
 Budgets are targets for the in-game measurement below; the offline bench reports trends,
 not client numbers.

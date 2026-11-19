@@ -23,6 +23,7 @@ a Blizzard frame.
 | `TinyTweaks.toc` | Load order and metadata. Every addon `.lua` file is listed here. |
 | `Core.lua` | Shared library: `ns`, events (`ns:On`), `ns:WhenLoaded`, per-layout storage (`ns:GetLayoutDB`) |
 | `EditModeFineTune.lua`, `EditModePosition.lua`, `RaidGroupGrid.lua` | One feature each; they depend only on `Core` |
+| `Options.lua` | The settings page (Options → AddOns) and the minimap button |
 | `docs/ARCHITECTURE.md` | Principles P1-P12, module anatomy, storage schema, backlog, decision log |
 | `docs/TESTING.md` | Test tiers, the client emulator, conventions |
 | `docs/PERFORMANCE.md` | Frequency tiers, budgets, measuring |

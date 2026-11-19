@@ -69,6 +69,26 @@ hooksecurefunc(dialog, "UpdateDialog", Update)
 
 `Update` reads `dialog.attachedToSystem` and never writes to the dialog.
 
+## Settings page and minimap button
+
+```lua
+page = CreateFrame("Frame")                          -- no parent: the panel reparents it
+page:Hide()                                          -- so each display runs OnShow
+page:SetScript("OnShow", UpdatePanel)
+category = Settings.RegisterCanvasLayoutCategory(page, "TinyTweaks")
+Settings.RegisterAddOnCategory(category)
+Settings.OpenToCategory(category:GetID())           -- the only way to open it
+
+button = CreateFrame("Button", nil, Minimap)         -- Minimap, never MinimapCluster
+```
+
+`Settings.OpenToCategory` is a C call that opens the panel as secure code.
+`SettingsPanel:Open` and `:OpenToCategory` run `ShowUIPanel` and the whole panel as addon
+code; the emulator and the lint flag them. Don't set `OnRefresh`, `OnCommit` or `OnDefault`
+on the page (the panel calls them), and don't add `StaticPopupDialogs` entries (a Blizzard
+table). `MinimapCluster` is an Edit Mode system and a resize-layout frame that walks its
+direct children. Live example: `Options.lua`.
+
 ## Decorate a Blizzard pooled widget
 
 Keep the addon widget in a weak-keyed local table, not as a field on the pooled frame:

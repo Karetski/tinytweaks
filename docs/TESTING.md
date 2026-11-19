@@ -36,7 +36,9 @@ addon:
 - writes a field on a Blizzard frame or table;
 - calls a Blizzard method that changes Edit Mode or raid layout state, or `SetScript`
   on a Blizzard frame;
-- parents a frame to the settings dialog;
+- opens the game's settings with `SettingsPanel:Open` or `:OpenToCategory` instead of
+  `Settings.OpenToCategory`;
+- parents a frame to the Edit Mode settings dialog or `MinimapCluster`;
 - moves, scales, resizes, shows or hides a protected frame in combat.
 
 **It is a model, not the game.** Every assumption about Blizzard behavior is listed in

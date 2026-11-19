@@ -206,6 +206,7 @@ Core.lua                the library: ns, events, WhenLoaded, layout storage, Run
 EditModeFineTune.lua    feature: typed values for safe Edit Mode sliders
 EditModePosition.lua    feature: X/Y offsets from a frame's Edit Mode pin
 RaidGroupGrid.lua       feature: raid groups arranged in a grid
+Options.lua             the TinyTweaks settings page (Options → AddOns) and the minimap button
 tests/                  runner, emulator (support/), unit, integration, invariants, bench
 tools/check.py          TOC parity, taint-contract lint, skill validation
 docs/                   this rubric, testing, performance
@@ -263,6 +264,9 @@ TinyTweaksDB = {
 			},
 		},
 	},
+	minimap = { -- Options; account-wide, absent while at the defaults (shown, at 225 degrees)
+		hide = true?, angle = 0..360, -- degrees counterclockwise from the right of the minimap
+	},
 }
 ```
 
@@ -276,6 +280,7 @@ Blizzard UI (read-only, post-hooked)
 Core.lua  ←  EditModeFineTune.lua
           ←  EditModePosition.lua
           ←  RaidGroupGrid.lua
+          ←  Options.lua
 ```
 
 Arrows point at what a file depends on. Nothing depends on a feature module.
@@ -303,9 +308,10 @@ refactors).
 Durable decisions that the code alone does not explain. Add an entry when a decision is
 made; change an entry only by superseding it.
 
-- **D1. Settings live inside Edit Mode.** Each feature's controls appear next to the
-  Edit Mode settings dialog of the frame they affect. There is no separate options
-  window. *Why:* progressive disclosure (P5) and storage per Edit Mode layout.
+- **D1. Settings live inside Edit Mode.** *(Superseded in part by D9.)* Each feature's
+  controls appear next to the Edit Mode settings dialog of the frame they affect. There is
+  no separate options window. *Why:* progressive disclosure (P5) and storage per Edit Mode
+  layout.
 - **D2. Panels are parented to `UIParent`, anchored to the dialog.** *Why:* the dialog is
   a resize-layout frame; Blizzard's layout code iterating an addon child taints the
   dialog and breaks native settings such as raid frame size.
@@ -333,6 +339,19 @@ made; change an entry only by superseding it.
   load, which costs a pass over the saved layouts and needs no bookkeeping. *Why:* a
   version number earns its place only when a migration can't safely run twice; add
   `TinyTweaksDB.version` with that migration.
+- **D9. Addon-wide settings live on one page in the game's settings.** Supersedes D1 for
+  settings that belong to no Edit Mode frame (the minimap button, debug recording): they go on
+  a canvas page registered under Options → AddOns; per-frame settings stay next to the Edit
+  Mode dialog. A minimap button, shown by default and hideable from the page, opens it, so
+  players can find the page without knowing the menu path. The page is opened only with
+  `Settings.OpenToCategory(category:GetID())`, never with `SettingsPanel` methods, and the
+  button is a plain addon button parented to `Minimap`, without libraries. *Why:* the C call
+  opens the panel as secure code, while `SettingsPanel:Open` runs `ShowUIPanel` and the panel
+  tainted; a hand-made button keeps `TinyTweaksDB` the only global and avoids vendoring
+  LibStub, LibDataBroker and LibDBIcon for one button. Dragging the button uses an `OnUpdate`
+  (T3): following the cursor needs a per-frame read, so it isn't throttled. It is set on drag
+  start and cleared on drop or hide, and moves the button only when the cursor's angle changes;
+  `tests/invariants/budget_spec.lua` pins both.
 
 ## Sources
 

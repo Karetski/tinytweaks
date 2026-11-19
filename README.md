@@ -48,6 +48,9 @@ Every cell is the size of the largest group. Cells keep their place when a group
 
 Select the raid frames in Edit Mode to open the **Group Layout** panel. It only applies when Groups is set to Separate. Settings are saved per Edit Mode layout.
 
+### Settings and minimap button
+TinyTweaks has a page in the game's settings under **Options → AddOns → TinyTweaks**. A minimap button opens it: click it to open the page, drag it to move it around the minimap's edge. To hide the button, uncheck **Show minimap button** on the page.
+
 ## Limitations
 - Raid frames are protected in combat. If the roster changes during combat, the affected groups use Blizzard's layout until combat ends.
 - Typed values on protected frames (such as unit frames) can't change during combat; they apply when combat ends.

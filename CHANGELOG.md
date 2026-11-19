@@ -5,6 +5,8 @@ player can notice; development tooling and refactors don't belong here.
 
 ## Unreleased
 
+- TinyTweaks has a settings page under Options → AddOns, and a minimap button that opens it.
+  Drag the button around the minimap's edge, or hide it from the page.
 - Typed sizes no longer run Blizzard's Edit Mode code, which could taint Edit Mode. Frames keep
   their position on screen when you type a size.
 - Frames that Blizzard lines up automatically get a size box only after you move them out of

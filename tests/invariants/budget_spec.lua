@@ -121,3 +121,39 @@ test("given_a_grid_when_blizzard_re_flows_then_tinytweaks_allocates_under_8_kb",
 	-- Then
 	A.truthy(withGrid - baseline < 8, string.format("grid reflow allocated %.2f KB over Blizzard's", withGrid - baseline))
 end)
+
+-- The minimap button follows the cursor with an OnUpdate (T3, decision D9). It exists only during a
+-- drag and moves the button only when the cursor's angle changes.
+test("given_the_minimap_button_when_at_rest_after_a_drop_or_hidden_mid_drag_then_it_has_no_on_update", function()
+	-- Given
+	local world = wow.new()
+	world:loadAddon()
+	local button = world:minimapButton()
+	A.isNil(button:GetScript("OnUpdate"), "at rest")
+	-- When
+	world:dragAroundMinimap(button, 90)
+	-- Then
+	A.isNil(button:GetScript("OnUpdate"), "after a drop")
+	-- And when hidden mid-drag
+	world:runScript(button, "OnDragStart", "LeftButton")
+	A.truthy(button:GetScript("OnUpdate"), "while dragging")
+	button:Hide()
+	A.isNil(button:GetScript("OnUpdate"), "after hiding mid-drag")
+end)
+
+test("given_a_drag_when_the_cursor_holds_still_then_the_button_is_not_moved_again", function()
+	-- Given
+	local world = wow.new()
+	world:loadAddon()
+	local button = world:minimapButton()
+	world:runScript(button, "OnDragStart", "LeftButton")
+	world:runScript(button, "OnUpdate", 0.016)
+	local moves = world:calls(button, "SetPoint")
+	-- When
+	for _ = 1, 100 do
+		world:runScript(button, "OnUpdate", 0.016)
+	end
+	-- Then
+	A.eq(world:calls(button, "SetPoint"), moves)
+	world:runScript(button, "OnDragStop")
+end)
