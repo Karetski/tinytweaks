@@ -27,6 +27,8 @@ a Blizzard frame.
 | `docs/TESTING.md` | Test tiers, the client emulator, conventions |
 | `docs/PERFORMANCE.md` | Frequency tiers, budgets, measuring |
 | `tests/` | Runner, emulator (`support/wow.lua`), unit, integration, invariants, bench |
+| `dev/!TinyTweaksDev/` | Dev-only recorder addon for in-game sessions (errors, blocked actions, frame snapshots); never shipped |
+| `tools/ingame.sh`, `tools/ingame_report.lua` | Wait for logout and report on an in-game session |
 | `tools/check.py` | TOC parity, taint-contract lint, skill validation |
 | `CHANGELOG.md` | Player-facing changes; add to *Unreleased* with every user-visible change |
 
@@ -37,7 +39,9 @@ make check              # the full gate: lint, tools/check.py, unit + integratio
 make test               # tests only;  make test-unit / make test-integration
 luajit tests/run.lua -f <name>   # run tests whose name contains <name>
 make bench              # timings and KB allocated per op for warm paths
-make link               # symlink this repo into the game's AddOns folder
+make link               # symlink this repo and the dev recorder into the game's AddOns folder
+make ingame-wait        # wait for the game to log out, then report on the session
+make ingame-report      # report on the last in-game session
 make dist               # build dist/TinyTweaks-<version>.zip
 ```
 
@@ -54,6 +58,8 @@ edit of a `.lua` file and reports failures back.
 3. **Follow the module anatomy** in `docs/ARCHITECTURE.md`. Read → compute (pure) → apply.
 4. **Verify in game.** The emulator is a model. A change is done only after
    `/ingame-verify`, or after saying plainly that it was verified against the emulator only.
+   The user only clicks and looks; errors, taint and frame state are recorded and read from
+   disk.
 5. **Small commits.** One concern each, refactors separate from behavior, every commit
    green.
 

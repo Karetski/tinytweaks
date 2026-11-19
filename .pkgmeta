@@ -9,6 +9,7 @@ manual-changelog:
 ignore:
   - CLAUDE.md
   - Makefile
+  - dev
   - docs
   - scripts
   - tests

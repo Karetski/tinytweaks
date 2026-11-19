@@ -56,3 +56,19 @@ files["tests/"] = {
 	globals = {},
 	read_globals = { "test", "skip", "bench" },
 }
+
+-- The dev-only recorder addon (not shipped). It writes its own SavedVariables table and reads the
+-- WoW globals below on top of the addon's.
+files["dev/"] = {
+	globals = { "TinyTweaksDevLog" },
+	read_globals = {
+		"C_CVar",
+		"C_UI",
+		"date",
+		"GetBuildInfo",
+		"GetCVar",
+		"issecretvalue",
+		"ScriptErrorsFrame",
+		"SetCVar",
+	},
+}

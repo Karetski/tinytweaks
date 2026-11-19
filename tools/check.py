@@ -18,6 +18,7 @@ taint   The taint contract, as far as text can check it (the simulated client in
             hooksecurefunc instead of calling it)
           - CreateFrame parented to EditModeSystemSettingsDialog (it iterates its children)
           - a global function or global assignment at file scope (everything is local or on ns)
+        The dev recorder addon (dev/!TinyTweaksDev) is checked under the same rules.
         A line can opt out with a trailing comment:  -- taint-ok: <reason>
 
 skills  Every .claude/skills/<name>/SKILL.md has frontmatter with name == directory name
@@ -33,6 +34,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOC = os.path.join(ROOT, "TinyTweaks.toc")
+DEV_TOC = os.path.join(ROOT, "dev", "!TinyTweaksDev", "!TinyTweaksDev.toc")
 
 errors = []
 warnings = []
@@ -52,9 +54,9 @@ def rel(path):
 
 # TOC -----------------------------------------------------------------------------------------
 
-def toc_files():
+def toc_files(toc=TOC):
     files, fields = [], {}
-    with open(TOC, encoding="utf-8") as f:
+    with open(toc, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -149,8 +151,15 @@ def strip_comments_and_strings(source):
 
 
 def addon_sources():
-    files, _ = toc_files() if os.path.exists(TOC) else ([], {})
-    return [os.path.join(ROOT, f) for f in files if f.endswith(".lua") and os.path.isfile(os.path.join(ROOT, f))]
+    """The addon's sources and the dev recorder's: both run in the client under the same contract."""
+    sources = []
+    for toc in (TOC, DEV_TOC):
+        if not os.path.exists(toc):
+            continue
+        base = os.path.dirname(toc)
+        files, _ = toc_files(toc)
+        sources += [os.path.join(base, f) for f in files if f.endswith(".lua") and os.path.isfile(os.path.join(base, f))]
+    return sources
 
 
 def check_taint():

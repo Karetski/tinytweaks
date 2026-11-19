@@ -1,0 +1,7 @@
+## Interface: 16001
+## Title: TinyTweaks Dev
+## Notes: Development only. Records Lua errors, blocked actions and Edit Mode frame state for TinyTweaks testing.
+## Version: dev
+## SavedVariables: TinyTweaksDevLog
+
+Recorder.lua
