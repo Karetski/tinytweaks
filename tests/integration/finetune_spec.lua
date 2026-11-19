@@ -16,13 +16,19 @@ local function overrides(world, frame)
 	return layout and layout.overrides and layout.overrides[frame.system .. ":" .. tostring(frame.systemIndex or 0)]
 end
 
-test("given_a_target_frame_when_selected_then_size_and_opacity_get_a_box_and_width_does_not", function()
+test("given_a_target_frame_when_selected_then_size_gets_a_box_and_width_does_not", function()
 	-- Given / When
 	local world = setup()
 	-- Then
 	A.truthy(world:fineTuneBox("FrameSize"), "size box")
-	A.truthy(world:fineTuneBox("Opacity"), "opacity box")
 	A.isNil(world:fineTuneBox("FrameWidth"), "width box")
+end)
+
+test("given_raid_style_party_frames_when_selected_then_opacity_gets_a_box", function()
+	-- Given / When
+	local world = setup(wow.frames.party())
+	-- Then
+	A.truthy(world:fineTuneBox("Opacity"))
 end)
 
 test("given_a_box_when_shown_then_it_shows_the_slider_value_and_hides_blizzards_label", function()
@@ -40,7 +46,6 @@ test("given_player_or_pet_frames_when_selected_then_size_has_no_box", function()
 		local world = setup(spec)
 		-- Then
 		A.isNil(world:fineTuneBox("FrameSize"), spec.name .. " size box")
-		A.truthy(world:fineTuneBox("Opacity"), spec.name .. " opacity box")
 	end
 end)
 
@@ -95,7 +100,7 @@ end)
 
 test("given_an_opacity_box_when_typing_a_value_then_the_frame_alpha_changes", function()
 	-- Given
-	local world, frame = setup()
+	local world, frame = setup(wow.frames.auras())
 	-- When
 	world:typeInto(world:fineTuneBox("Opacity"), "73")
 	-- Then
@@ -123,12 +128,13 @@ end)
 test("given_a_box_when_typing_out_of_range_values_then_they_are_clamped", function()
 	-- Given
 	local world, frame = setup()
+	local auraWorld, auras = setup(wow.frames.auras())
 	-- When
 	world:typeInto(world:fineTuneBox("FrameSize"), "5")
-	world:typeInto(world:fineTuneBox("Opacity"), "150")
+	auraWorld:typeInto(auraWorld:fineTuneBox("Opacity"), "150")
 	-- Then
 	A.near(frame:GetScale(), 0.10, 1e-9, "size min 10")
-	A.near(frame:GetAlpha(), 1.0, 1e-9, "opacity max 100")
+	A.near(auras:GetAlpha(), 1.0, 1e-9, "opacity max 100")
 	world:typeInto(world:fineTuneBox("FrameSize"), "9999")
 	A.near(frame:GetScale(), 4.0, 1e-9, "size max 400")
 end)

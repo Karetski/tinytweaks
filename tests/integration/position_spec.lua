@@ -148,15 +148,15 @@ end)
 test("given_a_scaled_frame_when_typing_an_offset_then_the_point_offset_is_in_the_frames_scale", function()
 	-- Given
 	local spec = wow.frames.target()
-	spec.settings[1].value = 50 -- FrameSize 50% -> scale 0.5
+	spec.settings[1].value = 200 -- FrameSize 200% -> scale 2
 	local world, frame = setup(spec)
 	world:selectSystem(frame)
 	local _, xBox = row(world, "X Offset")
 	-- When
 	world:typeInto(xBox, "100")
 	-- Then
-	A.eq(frame:GetScale(), 0.5)
-	A.eq({ offset(frame) }, { 200, 0 })
+	A.eq(frame:GetScale(), 2)
+	A.eq({ offset(frame) }, { 50, 0 })
 end)
 
 test("given_an_offset_box_when_typing_decimals_or_text_then_values_round_to_one_decimal_and_text_is_ignored", function()

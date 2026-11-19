@@ -2184,21 +2184,22 @@ end
 local CENTER = { point = "CENTER", relativeTo = "UIParent", relativePoint = "CENTER", offsetX = 0, offsetY = 0 }
 wow.CENTER = CENTER
 
-local function sizeSetting(key, method)
-	return { key = key, value = 100, min = 50, max = 200, step = 5, kind = "scale", method = method }
+-- Slider ranges are Blizzard's (EditModeSettingDisplayInfo.lua).
+local function sizeSetting(key, method, min, max, step)
+	return { key = key, value = 100, min = min, max = max, step = step, kind = "scale", method = method }
 end
 local function opacitySetting(min)
 	return { key = "Opacity", value = 100, min = min or 50, max = 100, step = 1, kind = "alpha", method = "UpdateSystemSettingOpacity" }
 end
 
+-- Unit frames have no Opacity setting except party, raid and arena (EditModePresetLayouts.lua).
 local function unitFrame(name, index, extra)
 	local spec = {
 		name = name, system = "UnitFrame", index = index, systemName = name:gsub("Frame$", " Frame"),
 		protected = true, anchorInfo = CENTER,
 		settings = {
-			sizeSetting("FrameSize", "UpdateSystemSettingFrameSize"),
-			opacitySetting(),
-			{ key = "FrameWidth", value = 120, min = 72, max = 240, step = 2 },
+			sizeSetting("FrameSize", "UpdateSystemSettingFrameSize", 100, 200, 5),
+			{ key = "FrameWidth", value = 120, min = 72, max = 144, step = 2 },
 		},
 	}
 	for k, v in pairs(extra or {}) do
@@ -2226,14 +2227,17 @@ wow.frames = {
 		table.insert(spec.settings, { key = "UseLargerFrame", type = "Checkbox", value = useLarger and 1 or 0 })
 		return spec
 	end,
+	-- Raid-style party frames: Blizzard shows Opacity only with "Use raid-style party frames".
 	party = function(extra)
-		return unitFrame("PartyFrame", "Party", extra)
+		local spec = unitFrame("PartyFrame", "Party", extra)
+		table.insert(spec.settings, opacitySetting())
+		return spec
 	end,
 	-- A managed frame (laid out by Blizzard's right-side container while in its default position).
 	durability = function(extra)
 		local spec = {
 			name = "DurabilityFrame", system = "DurabilityFrame", systemName = "Durability", anchorInfo = CENTER,
-			managed = true, settings = { sizeSetting("Size", "UpdateSystemSettingSize") },
+			managed = true, settings = { sizeSetting("Size", "UpdateSystemSettingSize", 75, 200, 5) },
 		}
 		for k, v in pairs(extra or {}) do
 			spec[k] = v
@@ -2243,14 +2247,14 @@ wow.frames = {
 	bags = function()
 		return {
 			name = "BagsBar", system = "Bags", systemName = "Bags", anchorInfo = CENTER,
-			settings = { sizeSetting("Size", "UpdateSystemSettingSize") },
+			settings = { sizeSetting("Size", "UpdateSystemSettingSize", 75, 200, 5) },
 		}
 	end,
 	castBar = function(locked)
 		return {
 			name = "PlayerCastingBarFrame", system = "CastBar", systemName = "Cast Bar", anchorInfo = CENTER,
 			settings = {
-				sizeSetting("BarSize", "UpdateSystemSettingBarSize"),
+				sizeSetting("BarSize", "UpdateSystemSettingBarSize", 100, 150, 10),
 				{ key = "LockToPlayerFrame", type = "Checkbox", value = locked and 1 or 0 },
 			},
 		}
