@@ -95,6 +95,36 @@ test("given_addon_code_when_it_parents_a_frame_to_the_settings_dialog_then_the_e
 	A.eq(#world:takeViolations(), 1)
 end)
 
+test("given_addon_code_when_it_parents_a_frame_to_the_minimap_cluster_then_the_emulator_flags_taint", function()
+	-- Given
+	local world = wow.new()
+	world:loadAddon()
+	-- When
+	A.errors(function()
+		world.G.CreateFrame("Button", nil, world.G.MinimapCluster)
+	end, "taint: addon parented a frame to MinimapCluster")
+	world.G.CreateFrame("Button", nil, world.minimap)
+	-- Then
+	A.eq(#world:takeViolations(), 1)
+end)
+
+test("given_addon_code_when_it_opens_the_settings_panel_directly_then_the_emulator_flags_taint", function()
+	-- Given
+	local world = wow.new()
+	world:loadAddon()
+	-- When
+	A.errors(function()
+		world.settingsPanel:Open()
+	end, "taint: addon called Open on SettingsPanel")
+	A.errors(function()
+		world.settingsPanel:OpenToCategory(1)
+	end, "taint: addon called OpenToCategory on SettingsPanel")
+	world.G.Settings.OpenToCategory(1)
+	-- Then
+	A.eq(#world:takeViolations(), 2)
+	A.truthy(world.settingsPanel:IsShown())
+end)
+
 test("given_combat_when_addon_code_moves_a_protected_frame_then_the_emulator_flags_a_blocked_action", function()
 	-- Given
 	local world = wow.new()

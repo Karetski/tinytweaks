@@ -16,7 +16,9 @@ taint   The taint contract, as far as text can check it (the simulated client in
           - assigning a field on a Blizzard global or an alias (never write Blizzard tables)
           - calling a Blizzard method that changes Edit Mode / raid layout state (hook it with
             hooksecurefunc instead of calling it)
-          - CreateFrame parented to EditModeSystemSettingsDialog (it iterates its children)
+          - CreateFrame parented to EditModeSystemSettingsDialog or MinimapCluster (they iterate
+            their children)
+          - SettingsPanel:Open / :OpenToCategory (use Settings.OpenToCategory, which opens it securely)
           - a global function or global assignment at file scope (everything is local or on ns)
         The dev recorder addon (dev/!TinyTweaksDev) is checked under the same rules.
         A line can opt out with a trailing comment:  -- taint-ok: <reason>
@@ -96,9 +98,14 @@ BLIZZARD_GLOBALS = {
     "EditModeManagerFrame", "EditModeSystemSettingsDialog", "CompactRaidFrameContainer", "UIParent",
     "GameTooltip", "UIErrorsFrame", "PlayerFrame", "TargetFrame", "FocusFrame", "PetFrame",
     "Minimap", "ObjectiveTrackerFrame", "ChatFrame1", "MainMenuBar", "BuffFrame", "DebuffFrame",
-    "PlayerCastingBarFrame", "PartyFrame", "BossTargetFrameContainer",
+    "PlayerCastingBarFrame", "PartyFrame", "BossTargetFrameContainer", "MinimapCluster",
+    "SettingsPanel", "Settings",
 }
-LAYOUT_PARENTS = {"EditModeSystemSettingsDialog"}
+LAYOUT_PARENTS = {"EditModeSystemSettingsDialog", "MinimapCluster"}
+
+# SettingsPanel methods that open it through ShowUIPanel. Called from addon code they run the whole
+# panel path tainted; Settings.OpenToCategory opens it as secure code instead.
+SETTINGS_PANEL_OPENERS = {"Open", "OpenToCategory"}
 
 # Blizzard methods that change Edit Mode / raid layout state. Calling them from addon code runs
 # Blizzard's code tainted; TinyTweaks post-hooks them instead.
@@ -171,12 +178,15 @@ def check_taint():
         code_lines = code.split("\n")
         blizzard = set(BLIZZARD_GLOBALS)
         layout_parents = set(LAYOUT_PARENTS)
+        settings_panels = {"SettingsPanel"}
         for line in code_lines:
             m = re.match(r"\s*local\s+(\w+)\s*=\s*(\w+)\s*$", line)
             if m and m.group(2) in blizzard:
                 blizzard.add(m.group(1))
                 if m.group(2) in layout_parents:
                     layout_parents.add(m.group(1))
+                if m.group(2) in settings_panels:
+                    settings_panels.add(m.group(1))
         # File-scope locals, including forward declarations (`local Foo` assigned further down).
         file_locals = set()
         for line in code_lines:
@@ -188,6 +198,9 @@ def check_taint():
         field_write = re.compile(r"\b(" + names + r")((?:\.\w+|\[[^\]]+\])+)\s*=(?!=)")
         parent_names = "|".join(sorted(layout_parents))
         create_parented = re.compile(r"\bCreateFrame\s*\([^,()]*,[^,()]*,\s*(" + parent_names + r")\b")
+        panel_open = re.compile(
+            r"\b(" + "|".join(sorted(settings_panels)) + r")\s*[:.]\s*(" + "|".join(sorted(SETTINGS_PANEL_OPENERS)) + r")\s*\("
+        )
 
         for number, line in enumerate(code_lines, 1):
             if ESCAPE.search(raw_lines[number - 1]):
@@ -205,6 +218,9 @@ def check_taint():
             m = create_parented.search(line)
             if m:
                 error(where, f"CreateFrame parented to {m.group(1)}: parent to UIParent and anchor instead")
+            m = panel_open.search(line)
+            if m:
+                error(where, f"calls {m.group(1)}:{m.group(2)}, which opens the panel tainted: use Settings.OpenToCategory(category:GetID())")
             m = re.match(r"function\s+([A-Za-z_]\w*)\s*\(", line)
             if m and m.group(1) not in file_locals:
                 error(where, "global function at file scope: make it local or a field of ns/the module")

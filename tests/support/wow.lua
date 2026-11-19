@@ -98,6 +98,23 @@
 	     container re-lays out on its own; the order isn't fixed (C:266-267), so setRaidRoster can run the
 	     groups after the container. The container's OnSizeChanged only updates its border; resizing it
 	     doesn't re-flow.
+	 11. Settings (Blizzard_Settings_Shared, not load-on-demand, so it exists before addons load):
+	     RegisterCanvasLayoutCategory(frame, name) returns (category, layout) through a forbidden
+	     attribute delegate; category:GetID() is a number (Blizzard_Settings.lua:162,
+	     Blizzard_SettingsInbound.lua:94,189, Blizzard_Category.lua:8). Settings.OpenToCategory(id) is
+	     C_SettingsUtil.OpenSettingsPanel, which opens the panel as secure code (Blizzard_Settings.lua:144,
+	     Blizzard_SettingsPanel.lua:144). Displaying a canvas category parents its frame to the panel's
+	     canvas, sets all points and shows it; leaving it unparents and hides it (SP:917-955).
+	     SettingsPanel:Open and :OpenToCategory are guarded: called from addon code they run ShowUIPanel
+	     and the panel tainted.
+	 12. Minimap is a plain frame inside MinimapCluster, an Edit Mode system and a resize-layout frame
+	     that walks its direct children (Blizzard_Minimap/Mainline/Minimap.xml:3,56, LayoutFrame.lua:58);
+	     parenting to MinimapCluster is a violation, parenting to Minimap is not. GetMinimapShape is not
+	     defined.
+	 13. C_AddOns enable state: EnableAddOn/DisableAddOn(name, character) with character nil for every
+	     character; GetAddOnEnableState returns Enum.AddOnEnableState (AddOnsDocumentation.lua,
+	     AddonList.lua:20-28). The emulator keeps one state for all characters. C_CVar.SetCVar always
+	     succeeds here; whether the client accepts taintLog from addon code is unverified.
 
 	Still unverified (client C code, not in the Lua source):
 	  * Which widget calls combat lockdown refuses on protected frames. Modelled from warcraft.wiki.gg
@@ -165,6 +182,7 @@ local function newEnum()
 		EditModeCooldownViewerSetting = { IconSize = 2, Opacity = 4 },
 		EditModePersonalResourceDisplaySetting = { Opacity = 5 },
 		GameRule = { ForcedPartyFrameScale = 40 },
+		AddOnEnableState = { None = 0, Some = 1, All = 2 },
 	}
 end
 
@@ -195,7 +213,7 @@ local BLIZZARD_ADDONS = { "Blizzard_EditMode", "Blizzard_CompactRaidFrames" }
 
 local COSMETIC = {
 	"SetJustifyH", "SetJustifyV", "SetWordWrap", "SetHighlightTexture", "SetTexture", "SetAutoFocus",
-	"SetCursorPosition", "SetMaxLetters",
+	"SetCursorPosition", "SetMaxLetters", "SetTexCoord",
 }
 
 -- Widget calls refused on a protected frame in combat (#secureframe on warcraft.wiki.gg Widget_API);
@@ -567,6 +585,27 @@ function World:buildMethods()
 	function region.GetParent(o)
 		return st(o).parent
 	end
+	function region.SetParent(o, parent)
+		local s = st(o)
+		if s.parent then
+			local siblings = st(s.parent).children
+			for i, child in ipairs(siblings) do
+				if child == o then
+					table.remove(siblings, i)
+					break
+				end
+			end
+		end
+		s.parent = parent
+		if parent then
+			local ps = st(parent)
+			ps.children[#ps.children + 1] = o
+		end
+	end
+	function region.GetCenter(o)
+		local left, bottom, width, height = rect(o)
+		return left + width / 2, bottom + height / 2
+	end
 	function region.GetName(o)
 		return st(o).name
 	end
@@ -700,6 +739,12 @@ function World:buildMethods()
 		end,
 		SetMouseMotionEnabled = function(o, enabled)
 			st(o).mouseMotion = enabled
+		end,
+		RegisterForDrag = function(o, ...)
+			st(o).dragButtons = { ... }
+		end,
+		RegisterForClicks = function(o, ...)
+			st(o).clickButtons = { ... }
 		end,
 	})
 
@@ -952,12 +997,63 @@ function World:buildGlobals()
 			end
 		end)
 	end)
+	-- Installed addons other than TinyTweaks: name -> { enabled = boolean }, for every character
+	-- (AddOnsDocumentation.lua; character nil means all characters, AddonList.lua:20).
+	world.addons = {}
+	world.cvars = {}
+	world.reloads = 0
+	world.cursor = { 0, 0 }
 	set("C_AddOns", {
 		IsAddOnLoaded = function(name)
 			local loaded = world.loaded[name] == true
 			return loaded, loaded
 		end,
+		DoesAddOnExist = function(name)
+			return name == "TinyTweaks" or world.addons[name] ~= nil
+		end,
+		EnableAddOn = function(name)
+			if world.addons[name] then
+				world.addons[name].enabled = true
+			end
+		end,
+		DisableAddOn = function(name)
+			if world.addons[name] then
+				world.addons[name].enabled = false
+			end
+		end,
+		GetAddOnEnableState = function(name)
+			local addon = world.addons[name]
+			if name == "TinyTweaks" or (addon and addon.enabled) then
+				return world.Enum.AddOnEnableState.All
+			end
+			return world.Enum.AddOnEnableState.None
+		end,
+		GetAddOnMetadata = function(name, field)
+			if name == "TinyTweaks" then
+				return wow.tocField(field)
+			end
+		end,
 	})
+	set("C_CVar", {
+		GetCVar = function(name)
+			return world.cvars[name]
+		end,
+		SetCVar = function(name, value)
+			world.cvars[name] = tostring(value)
+			return true
+		end,
+	})
+	set("ReloadUI", function()
+		world.reloads = world.reloads + 1
+	end)
+	set("GetCursorPosition", function()
+		return world.cursor[1], world.cursor[2]
+	end)
+	set("UnitGUID", function(unit)
+		if unit == "player" then
+			return "Player-1-00000001"
+		end
+	end)
 	set("C_Timer", {
 		After = function(_, fn)
 			world.timers[#world.timers + 1] = fn
@@ -1005,6 +1101,114 @@ function World:buildGlobals()
 		gameTooltip:Hide()
 	end)
 	self:newWidget("MessageFrame", "UIErrorsFrame", uiParent, true)
+
+	self:createSettings()
+	self:createMinimap()
+end
+
+-- A Blizzard-owned plain table: addon code may read it but not write its fields.
+function World:blizzardTable(name, fields)
+	local world = self
+	local backing = fields or {}
+	local proxy = setmetatable({}, {
+		__index = backing,
+		__newindex = function(_, key, value)
+			if world.depth == 0 then
+				world:violation("taint: addon wrote " .. tostring(key) .. " on " .. name)
+			end
+			rawset(backing, key, value)
+		end,
+	})
+	rawset(self.G, name, proxy)
+	return proxy
+end
+
+-- Blizzard: Settings panel (Blizzard_Settings_Shared, loaded before addons; build 1.60.1) ------------
+-- S = Blizzard_Settings.lua, SI = Blizzard_SettingsInbound.lua, SP = Blizzard_SettingsPanel.lua.
+
+function World:createSettings()
+	local world = self
+	self.categories = {}
+	self.addonCategories = {}
+
+	local panel = self:newWidget("Frame", "SettingsPanel", self.UIParent, true)
+	self.ws[panel].shown = false
+	local canvas = self:newWidget("Frame", nil, panel, true)
+	self.settingsPanel, self.settingsCanvas = panel, canvas
+
+	-- SP:917 ClearCurrentCategoryCanvas, SP:932 DisplayLayout for a canvas layout.
+	local function display(category)
+		local current = world.currentCategory
+		if current and current ~= category then
+			current.frame:SetParent(nil)
+			current.frame:ClearAllPoints()
+			current.frame:Hide()
+		end
+		world.currentCategory = category
+		category.frame:SetParent(canvas)
+		category.frame:ClearAllPoints()
+		category.frame:SetAllPoints(canvas)
+		category.frame:Show()
+	end
+	-- SP:305 Open shows the panel through ShowUIPanel; SP:313 OpenToCategory activates a category. Both
+	-- run the whole panel path as the caller, so addon code must not call them (C_SettingsUtil does).
+	self:defineMethod(panel, "Open", function(this)
+		this:Show()
+	end, true)
+	self:defineMethod(panel, "OpenToCategory", function(this, categoryID)
+		this:Open()
+		local category = world.categories[categoryID]
+		if category then
+			display(category)
+		end
+		return category ~= nil
+	end, true)
+
+	local function newCategory(name, frame)
+		local category = { ID = #world.categories + 1, name = name, frame = frame }
+		function category.GetID(this)
+			return this.ID
+		end
+		function category.GetName(this)
+			return this.name
+		end
+		world.categories[category.ID] = category
+		return category
+	end
+
+	self:blizzardTable("Settings", {
+		-- S:162 → SI:94: registered through a forbidden attribute delegate, returns (category, layout).
+		RegisterCanvasLayoutCategory = function(frame, name)
+			return world:blizzard(function()
+				return newCategory(name, frame), { frame = frame }
+			end)
+		end,
+		-- S:134: the category joins the AddOns list.
+		RegisterAddOnCategory = function(category)
+			world.addonCategories[#world.addonCategories + 1] = category
+		end,
+		-- S:144: C_SettingsUtil.OpenSettingsPanel → SETTINGS_PANEL_OPEN → SP:144 OpenToCategory, secure.
+		OpenToCategory = function(categoryID)
+			world.openedCategory = categoryID
+			world:blizzard(function()
+				panel:OpenToCategory(categoryID)
+			end)
+		end,
+	})
+end
+
+-- Blizzard: Minimap (Blizzard_Minimap/Mainline/Minimap.xml; build 1.60.1) ---------------------------
+-- MinimapCluster is an Edit Mode system and a resize-layout frame that walks its direct children
+-- (LayoutFrame.lua:58-60); Minimap sits one level below it. GetMinimapShape is not defined.
+
+function World:createMinimap()
+	local cluster = self:newWidget("Frame", "MinimapCluster", self.UIParent, true)
+	self.ws[cluster].iteratesChildren = true
+	local minimap = self:newWidget("Frame", "Minimap", cluster, true)
+	local ms = self.ws[minimap]
+	ms.width, ms.height = 140, 140
+	ms.points = { { "TOPRIGHT", self.UIParent, "TOPRIGHT", -30, -30 } }
+	self.minimap = minimap
 end
 
 -- Events, timers, combat ----------------------------------------------------------------------
@@ -1067,6 +1271,24 @@ function wow.tocFiles(path)
 		end
 	end
 	return files
+end
+
+-- A "## Field: value" line of the TOC.
+function wow.tocField(field, path)
+	for line in readFile(path or "TinyTweaks.toc"):gmatch("[^\r\n]+") do
+		local value = line:match("^##%s*" .. field .. ":%s*(.-)%s*$")
+		if value then
+			return value
+		end
+	end
+	return nil
+end
+
+-- Installs another addon (e.g. the dev recorder): enabled for the next load, loaded in this session.
+function World:installAddon(name, opts)
+	opts = opts or {}
+	self.addons[name] = { enabled = opts.enabled ~= false }
+	self.loaded[name] = opts.loaded or nil
 end
 
 function World:loadBlizzardAddon(name)
@@ -2033,6 +2255,68 @@ function World:dragSlider(sliderTemplate, value)
 		sl.fire(value)
 	end
 	thumb.dragging = false
+end
+
+-- Game Menu → Options → AddOns → the category named `name` (SP:313, run by Blizzard).
+function World:openSettings(name)
+	for id, category in ipairs(self.categories) do
+		if category.name == name then
+			self:blizzard(function()
+				self.settingsPanel:OpenToCategory(id)
+			end)
+			return category.frame
+		end
+	end
+	error("no settings category " .. tostring(name))
+end
+
+function World:closeSettings()
+	self:blizzard(function()
+		self.settingsPanel:Hide()
+	end)
+end
+
+-- The addon button on the minimap, or nil.
+function World:minimapButton()
+	for _, child in ipairs(self.ws[self.minimap].children) do
+		local s = self.ws[child]
+		if s.kind == "Button" and not s.blizzard then
+			return child
+		end
+	end
+	return nil
+end
+
+-- Angle in degrees of a frame's CENTER offset from the minimap's center, and its distance.
+function World:minimapAngle(button)
+	local p = self.ws[button].points[1]
+	assert(p and p[1] == "CENTER" and p[2] == self.minimap and p[3] == "CENTER", "not centered on the minimap")
+	return math.deg(math.atan2(p[5], p[4])) % 360, math.sqrt(p[4] ^ 2 + p[5] ^ 2)
+end
+
+-- Drags a button by the left mouse button with the cursor moving to `angle` degrees around the
+-- minimap's center, then drops it. The cursor is in screen pixels (effective scale applied).
+function World:dragAroundMinimap(button, angle)
+	local s = self.ws[button]
+	assert(s.dragButtons and s.dragButtons[1] == "LeftButton", "button isn't draggable with the left button")
+	self:runScript(button, "OnDragStart", "LeftButton")
+	local cx, cy = self.minimap:GetCenter()
+	local scale = self.minimap:GetEffectiveScale()
+	local r = math.rad(angle)
+	self.cursor = { (cx + math.cos(r) * 200) * scale, (cy + math.sin(r) * 200) * scale }
+	self:runScript(button, "OnUpdate", 0.016)
+	self:runScript(button, "OnDragStop")
+end
+
+-- The check button whose label (UICheckButtonTemplate's .Text) reads `label`.
+function World:findCheckbox(root, label)
+	for _, obj in ipairs(self:descendants(root)) do
+		local s = self.ws[obj]
+		if s.kind == "CheckButton" and obj.Text and obj.Text:GetText() == label then
+			return obj
+		end
+	end
+	return nil
 end
 
 -- Hovers a region and returns the tooltip lines it showed.
