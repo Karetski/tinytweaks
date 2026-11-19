@@ -151,7 +151,7 @@ test("given_a_box_when_typing_text_that_is_not_a_number_then_nothing_changes", f
 	A.isNil(overrides(world, frame))
 end)
 
-test("given_a_typed_value_when_typing_the_slider_value_then_the_frames_record_is_removed", function()
+test("given_the_only_typed_value_when_typing_the_slider_value_then_no_empty_records_are_left", function()
 	-- Given
 	local world, frame = setup()
 	local box = world:fineTuneBox("FrameSize")
@@ -160,6 +160,7 @@ test("given_a_typed_value_when_typing_the_slider_value_then_the_frames_record_is
 	world:typeInto(box, "100")
 	-- Then
 	A.isNil(overrides(world, frame), "no empty record")
+	A.isNil(world:saved().layouts["1:Main"].overrides, "no empty overrides table")
 	A.eq(frame:GetScale(), 1)
 end)
 
@@ -283,6 +284,15 @@ test("given_overrides_for_sliders_no_longer_supported_when_the_addon_loads_then_
 	A.eq(world:saved().layouts["1:Main"].overrides, {
 		[unit] = { [E.EditModeUnitFrameSetting.FrameSize] = { value = 87.5, raw = 10 } },
 	})
+end)
+
+test("given_a_saved_layout_with_an_empty_overrides_table_when_the_addon_loads_then_the_table_is_dropped", function()
+	-- Given
+	local world = wow.new({ saved = { TinyTweaksDB = { layouts = { ["1:Main"] = { overrides = {}, positions = {} } } } } })
+	-- When
+	world:loadAddon()
+	-- Then
+	A.eq(world:saved().layouts["1:Main"], { positions = {} })
 end)
 
 -- Screen offset of the frame's first point: point offsets are in the frame's own scale.

@@ -121,7 +121,8 @@ local function GetOverrides(frame, create)
 	return overrides
 end
 
--- Removes a typed value. Returns true if there was one. A frame without typed values keeps no record.
+-- Removes a typed value. Returns true if there was one. A frame without typed values keeps no
+-- record, and a layout without any keeps no overrides table.
 local function ClearOverride(frame, setting)
 	local overrides = GetOverrides(frame, false)
 	if not (overrides and overrides[setting]) then
@@ -129,7 +130,11 @@ local function ClearOverride(frame, setting)
 	end
 	overrides[setting] = nil
 	if not next(overrides) then
-		ns:GetLayoutDB(false).overrides[SystemKey(frame)] = nil
+		local layout = ns:GetLayoutDB(false)
+		layout.overrides[SystemKey(frame)] = nil
+		if not next(layout.overrides) then
+			layout.overrides = nil
+		end
 	end
 	return true
 end
@@ -457,6 +462,9 @@ function M:Init()
 				if not next(overrides) then
 					layout.overrides[key] = nil
 				end
+			end
+			if layout.overrides and not next(layout.overrides) then
+				layout.overrides = nil
 			end
 		end
 
