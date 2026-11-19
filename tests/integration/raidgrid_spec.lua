@@ -276,6 +276,31 @@ test("given_down_order_when_stepping_back_from_8_columns_and_switching_to_across
 	A.eq(world:raidGrid(), "1 2 3 4 / 5 6 7 8")
 end)
 
+-- Distance from root's top edge down to region's top edge, along a chain of TOPLEFT anchors.
+local function depthBelowTop(root, region)
+	local _, relTo, relPoint, _, y = region:GetPoint(1)
+	local depth = relTo == root and 0 or depthBelowTop(root, relTo)
+	if relPoint:find("^BOTTOM") then
+		depth = depth + relTo:GetHeight()
+	end
+	return depth - y
+end
+
+test("given_the_panel_when_shown_then_its_note_stays_clear_of_the_bottom_border", function()
+	for _, columns in ipairs({ 4, 1 }) do
+		-- Given
+		local world = setup()
+		toggle(world)
+		-- When
+		setColumns(world, columns)
+		-- Then
+		local p = panel(world)
+		local text = world:findText(p, "Saved per Edit Mode layout.")
+		local noteBottom = depthBelowTop(p, text) + text:GetStringHeight()
+		A.truthy(p:GetHeight() - noteBottom >= 14, columns .. " columns: " .. p:GetHeight() - noteBottom .. " px below the note")
+	end
+end)
+
 test("given_a_grid_when_previewed_then_the_panel_preview_matches_the_placement", function()
 	-- Given
 	local world = setup()

@@ -401,7 +401,8 @@ end
 local panel
 
 local PANEL_WIDTH = 280
-local PANEL_BASE_HEIGHT = 250
+-- Everything but the preview and the note: title, checkbox, rows, gaps and a 16 px bottom inset.
+local PANEL_BASE_HEIGHT = 248
 local PREVIEW_CELL_W, PREVIEW_CELL_H, PREVIEW_GAP = 22, 16, 3
 local SELECTED_COLOR = { 1, 0.82, 0 }
 
@@ -737,7 +738,6 @@ function M:UpdatePanel()
 		row:Update(cfg, enabled)
 	end
 	local previewHeight = panel.Preview:Update(cfg, enabled)
-	panel:SetHeight(PANEL_BASE_HEIGHT + previewHeight)
 
 	if not separate then
 		panel.Note:SetText("Only applies when Groups is set to Separate.")
@@ -746,6 +746,7 @@ function M:UpdatePanel()
 	else
 		panel.Note:SetText("Saved per Edit Mode layout.")
 	end
+	panel:SetHeight(PANEL_BASE_HEIGHT + previewHeight + panel.Note:GetStringHeight())
 end
 
 -- Init -------------------------------------------------------------------------------

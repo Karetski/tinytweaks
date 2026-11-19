@@ -601,6 +601,10 @@ function World:buildMethods()
 		GetText = function(o)
 			return st(o).text
 		end,
+		-- One line of a small font; wrapping isn't modeled.
+		GetStringHeight = function(o)
+			return st(o).text and st(o).text ~= "" and 12 or 0
+		end,
 		SetFontObject = function(o, font)
 			st(o).font = font
 		end,
@@ -829,6 +833,7 @@ function World:applyTemplate(obj, template)
 	end
 	if template == "UICheckButtonTemplate" then
 		obj.Text = self:newWidget("FontString", nil, obj, false)
+		self.ws[obj].width, self.ws[obj].height = 32, 32 -- CheckButtonTemplates.xml:51
 		return
 	end
 	if template == "MinimalSliderWithSteppersTemplate" then

@@ -11,6 +11,7 @@ player can notice; development tooling and refactors don't belong here.
   their default position, and the Party frame gets none while the game forces its scale.
 - Raid group grid: after stepping Columns from 8 back to 4 with *Down*, switching to *Across*
   keeps 4 columns instead of jumping to 7.
+- Raid group grid: the note at the bottom of the Group Layout panel no longer overlaps its border.
 
 ## 0.1.0
 
