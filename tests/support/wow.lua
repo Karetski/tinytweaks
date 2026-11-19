@@ -106,7 +106,8 @@
 	     Blizzard_SettingsPanel.lua:144). Displaying a canvas category parents its frame to the panel's
 	     canvas, sets all points and shows it; leaving it unparents and hides it (SP:917-955).
 	     SettingsPanel:Open and :OpenToCategory are guarded: called from addon code they run ShowUIPanel
-	     and the panel tainted.
+	     and the panel tainted. OpenSettingsPanel is HasRestrictions: in game, addon code calling it in
+	     combat raised ADDON_ACTION_BLOCKED, so the emulator flags that as a blocked action.
 	 12. Minimap is a plain frame inside MinimapCluster, an Edit Mode system and a resize-layout frame
 	     that walks its direct children (Blizzard_Minimap/Mainline/Minimap.xml:3,56, LayoutFrame.lua:58);
 	     parenting to MinimapCluster is a violation, parenting to Minimap is not. GetMinimapShape is not
@@ -1221,7 +1222,12 @@ function World:createSettings()
 			world.addonCategories[#world.addonCategories + 1] = category
 		end,
 		-- S:144: C_SettingsUtil.OpenSettingsPanel → SETTINGS_PANEL_OPEN → SP:144 OpenToCategory, secure.
+		-- OpenSettingsPanel is restricted: from addon code in combat the client blocks it
+		-- (ADDON_ACTION_BLOCKED "OpenSettingsPanel()", observed in game on build 1.60.1).
 		OpenToCategory = function(categoryID)
+			if world.combat and world.depth == 0 then
+				world:violation("blocked: addon called OpenSettingsPanel in combat")
+			end
 			world.openedCategory = categoryID
 			world:blizzard(function()
 				panel:OpenToCategory(categoryID)

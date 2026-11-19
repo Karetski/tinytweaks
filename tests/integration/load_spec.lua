@@ -125,6 +125,19 @@ test("given_addon_code_when_it_opens_the_settings_panel_directly_then_the_emulat
 	A.truthy(world.settingsPanel:IsShown())
 end)
 
+test("given_combat_when_addon_code_opens_settings_then_the_emulator_flags_a_blocked_action", function()
+	-- Given
+	local world = wow.new()
+	world:loadAddon()
+	world:setCombat(true)
+	-- When
+	A.errors(function()
+		world.G.Settings.OpenToCategory(1)
+	end, "blocked: addon called OpenSettingsPanel in combat")
+	-- Then
+	A.eq(world:takeViolations(), { "blocked: addon called OpenSettingsPanel in combat" })
+end)
+
 test("given_a_shown_child_of_a_hidden_frame_when_the_frame_is_shown_or_hidden_then_the_child_gets_on_show_and_on_hide", function()
 	-- Given
 	local world = wow.new()
