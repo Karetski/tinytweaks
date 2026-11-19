@@ -113,8 +113,14 @@
 	     defined.
 	 13. C_AddOns enable state: EnableAddOn/DisableAddOn(name, character) with character nil for every
 	     character; GetAddOnEnableState returns Enum.AddOnEnableState (AddOnsDocumentation.lua,
-	     AddonList.lua:20-28). The emulator keeps one state for all characters. C_CVar.SetCVar always
+	     AddonList.lua:20-28). The emulator keeps one state for all characters. A change lasts only
+	     once C_AddOns.SaveAddOns runs: the AddOns list calls ResetAddOns when it closes without Okay
+	     (AddonList.lua:674-681). C_CVar.SetCVar always
 	     succeeds here; whether the client accepts taintLog from addon code is unverified.
+
+	Widgets: OnShow and OnHide run when a frame's own shown flag changes, and also on its shown
+	descendants when that change makes them visible or hidden (the client runs them on every frame
+	whose visibility changes).
 
 	Still unverified (client C code, not in the Lua source):
 	  * Which widget calls combat lockdown refuses on protected frames. Modelled from warcraft.wiki.gg
@@ -541,20 +547,36 @@ function World:buildMethods()
 		local s = st(o)
 		return s.width, s.height
 	end
+	-- OnShow/OnHide also reach the shown descendants of a frame whose visibility changed.
+	local function cascade(o, script)
+		for _, child in ipairs(st(o).children) do
+			if st(child).shown then
+				world:runScript(child, script)
+				cascade(child, script)
+			end
+		end
+	end
 	function region.Show(o)
 		guardProtected(o, "Show")
 		local s = st(o)
 		if not s.shown then
 			s.shown = true
 			world:runScript(o, "OnShow")
+			if o:IsVisible() then
+				cascade(o, "OnShow")
+			end
 		end
 	end
 	function region.Hide(o)
 		guardProtected(o, "Hide")
 		local s = st(o)
 		if s.shown then
+			local wasVisible = o:IsVisible()
 			s.shown = false
 			world:runScript(o, "OnHide")
+			if wasVisible then
+				cascade(o, "OnHide")
+			end
 		end
 	end
 	function region.SetShown(o, shown)
@@ -1021,6 +1043,17 @@ function World:buildGlobals()
 				world.addons[name].enabled = false
 			end
 		end,
+		-- Enable states change at once but last only once saved; ResetAddOns reverts unsaved ones.
+		SaveAddOns = function()
+			for _, addon in pairs(world.addons) do
+				addon.saved = addon.enabled
+			end
+		end,
+		ResetAddOns = function()
+			for _, addon in pairs(world.addons) do
+				addon.enabled = addon.saved
+			end
+		end,
 		GetAddOnEnableState = function(name)
 			local addon = world.addons[name]
 			if name == "TinyTweaks" or (addon and addon.enabled) then
@@ -1287,7 +1320,8 @@ end
 -- Installs another addon (e.g. the dev recorder): enabled for the next load, loaded in this session.
 function World:installAddon(name, opts)
 	opts = opts or {}
-	self.addons[name] = { enabled = opts.enabled ~= false }
+	local enabled = opts.enabled ~= false
+	self.addons[name] = { enabled = enabled, saved = enabled }
 	self.loaded[name] = opts.loaded or nil
 end
 
@@ -2268,6 +2302,16 @@ function World:openSettings(name)
 		end
 	end
 	error("no settings category " .. tostring(name))
+end
+
+-- Opens and closes Game Menu → AddOns: closing it without Okay resets unsaved enable states
+-- (Blizzard_AddOnList/AddonList.lua:674-681).
+function World:closeAddonList(okay)
+	if okay then
+		self.G.C_AddOns.SaveAddOns()
+	else
+		self.G.C_AddOns.ResetAddOns()
+	end
 end
 
 function World:closeSettings()

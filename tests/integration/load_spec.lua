@@ -125,6 +125,26 @@ test("given_addon_code_when_it_opens_the_settings_panel_directly_then_the_emulat
 	A.truthy(world.settingsPanel:IsShown())
 end)
 
+test("given_a_shown_child_of_a_hidden_frame_when_the_frame_is_shown_or_hidden_then_the_child_gets_on_show_and_on_hide", function()
+	-- Given
+	local world = wow.new()
+	local parent = world.G.CreateFrame("Frame", nil, world.UIParent)
+	parent:Hide()
+	local child = world.G.CreateFrame("Frame", nil, parent)
+	local seen = {}
+	child:SetScript("OnShow", function()
+		seen[#seen + 1] = "show"
+	end)
+	child:SetScript("OnHide", function()
+		seen[#seen + 1] = "hide"
+	end)
+	-- When
+	parent:Show()
+	parent:Hide()
+	-- Then
+	A.eq(seen, { "show", "hide" })
+end)
+
 test("given_combat_when_addon_code_moves_a_protected_frame_then_the_emulator_flags_a_blocked_action", function()
 	-- Given
 	local world = wow.new()
