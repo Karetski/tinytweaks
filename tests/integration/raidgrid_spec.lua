@@ -262,6 +262,20 @@ test("given_down_order_when_stepping_columns_then_counts_that_give_the_same_grid
 	A.eq(columnsText(world), "4")
 end)
 
+test("given_down_order_when_stepping_back_from_8_columns_and_switching_to_across_then_the_grid_keeps_4_columns", function()
+	-- Given
+	local world = setup()
+	toggle(world)
+	choose(world, "Down")
+	world:click(world:findButton(panel(world), "+"))
+	world:click(world:findButton(panel(world), "-"))
+	-- When
+	choose(world, "Across")
+	-- Then
+	A.eq(columnsText(world), "4")
+	A.eq(world:raidGrid(), "1 2 3 4 / 5 6 7 8")
+end)
+
 test("given_a_grid_when_previewed_then_the_panel_preview_matches_the_placement", function()
 	-- Given
 	local world = setup()

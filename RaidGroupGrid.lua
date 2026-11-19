@@ -448,7 +448,8 @@ local function CreateColumnsRow(parent)
 	local rowsText = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 	rowsText:SetPoint("LEFT", plus, "RIGHT", 8, 0)
 
-	-- Steps to the next column count that actually changes the grid.
+	-- Steps to the next column count that actually changes the grid, and stores the count the grid
+	-- uses, so the shown count stays when the order changes.
 	local function Step(delta)
 		local cfg = GetConfig(true)
 		local current = GetGridSize(cfg.columns, cfg.order)
@@ -457,7 +458,7 @@ local function CreateColumnsRow(parent)
 			columns = columns + delta
 		until columns < 1 or columns > NUM_RAID_GROUPS or GetGridSize(columns, cfg.order) ~= current
 		if columns >= 1 and columns <= NUM_RAID_GROUPS then
-			SetConfig("columns", columns)
+			SetConfig("columns", (GetGridSize(columns, cfg.order)))
 		end
 	end
 	minus:SetScript("OnClick", function()

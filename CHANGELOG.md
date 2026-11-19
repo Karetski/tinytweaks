@@ -9,6 +9,8 @@ player can notice; development tooling and refactors don't belong here.
   their position on screen when you type a size.
 - Frames that Blizzard lines up automatically get a size box only after you move them out of
   their default position, and the Party frame gets none while the game forces its scale.
+- Raid group grid: after stepping Columns from 8 back to 4 with *Down*, switching to *Across*
+  keeps 4 columns instead of jumping to 7.
 
 ## 0.1.0
 
