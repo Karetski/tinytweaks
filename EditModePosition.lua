@@ -382,13 +382,6 @@ function M:UpdatePanel()
 	UpdateOffsetRow(panel.Y, frame, not reason)
 end
 
-local function ShowTooltip(owner, title, text)
-	GameTooltip:SetOwner(owner, "ANCHOR_TOP")
-	GameTooltip:SetText(title)
-	GameTooltip:AddLine(text, 1, 1, 1, true)
-	GameTooltip:Show()
-end
-
 local function CreateRow(previous, labelText, height)
 	local row = CreateFrame("Frame", nil, panel)
 	row:SetSize(ROW_WIDTH, height)
@@ -415,7 +408,7 @@ local function CreatePinRow(previous)
 	end
 	row:SetScript("OnEnter", function(self)
 		if self.tooltip then
-			ShowTooltip(self, "Pinned to", self.tooltip)
+			ns:ShowTooltip(self, "Pinned to", self.tooltip)
 		end
 	end)
 	row:SetScript("OnLeave", GameTooltip_Hide)
@@ -457,7 +450,7 @@ local function CreateOffsetRow(previous, labelText, axis, hint)
 		M:UpdatePanel()
 	end)
 	box:SetScript("OnEnter", function(self)
-		ShowTooltip(self, labelText, hint .. "\nDrag the slider, or type any value and press Enter.")
+		ns:ShowTooltip(self, labelText, hint .. "\nDrag the slider, or type any value and press Enter.")
 	end)
 	box:SetScript("OnLeave", GameTooltip_Hide)
 	row.Box = box

@@ -202,7 +202,7 @@ never rejected silently.
 
 ```
 TinyTweaks.toc          load order: Core first, then one file per feature
-Core.lua                the library: ns, events, WhenLoaded, layout storage, RunAfterCombat, ForEachSystemFrame, Print
+Core.lua                the library: ns, events, WhenLoaded, layout storage, RunAfterCombat, ForEachSystemFrame, Print, ShowTooltip
 EditModeFineTune.lua    feature: typed values for safe Edit Mode sliders
 EditModePosition.lua    feature: X/Y offsets from a frame's Edit Mode pin
 RaidGroupGrid.lua       feature: raid groups arranged in a grid
@@ -292,8 +292,8 @@ refactors).
    through behavior, which is the stronger test while the logic stays this small. Expose
    a module's compute layer for unit tests (P4) when its cases outgrow what scenarios
    cover cheaply, for example a new layout algorithm with many edge cases.
-2. **`SystemKey`, number parsing and the tooltip helper are duplicated** across modules.
-   Move each into `Core` when a third copy would appear (P3).
+2. **`SystemKey` and number parsing are duplicated** across modules. Move each into `Core`
+   when a third copy would appear (P3), as `ns:ShowTooltip` was.
 3. **`UpdatePanel` runs several times per selection** (it is hooked on `UpdateSettings`,
    `AttachToSystemFrame`, `OnShow`, `UpdateDialog`, `UpdateRaidContainerFlow`,
    `UpdateSystems`). Coalesce to once per frame if measurement shows a cost (P6).

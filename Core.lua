@@ -81,6 +81,15 @@ function ns:Print(...)
 	print("|cff66ccffTinyTweaks|r:", ...)
 end
 
+-- A tooltip with a title and one wrapped line of white text, above the owner unless `anchor` says
+-- otherwise.
+function ns:ShowTooltip(owner, title, text, anchor)
+	GameTooltip:SetOwner(owner, anchor or "ANCHOR_TOP")
+	GameTooltip:SetText(title)
+	GameTooltip:AddLine(text, 1, 1, 1, true)
+	GameTooltip:Show()
+end
+
 -- Per Edit Mode layout storage. Character layouts are also keyed by character,
 -- since different characters can have character layouts with the same name.
 function ns:GetLayoutKey()
